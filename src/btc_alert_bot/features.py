@@ -230,3 +230,53 @@ def history_field(history: list[dict], field: str) -> list[float]:
         except (TypeError, ValueError):
             continue
     return out
+
+
+# ---------------------------------------------------------------------------
+# Volatility-adaptive thresholds
+# ---------------------------------------------------------------------------
+
+# Reference ATR% used as the "normal" vol regime. Around this value the
+# adaptive floor equals the base. ~0.10% = typical 5-min ATR for BTC.
+ADAPTIVE_REFERENCE_ATR_PCT = 0.10
+
+# Clamp so the adaptive floor can never get too small (false alarms during
+# zero-vol nights) or too large (we'd never fire during sustained chop).
+ADAPTIVE_SCALE_MIN = 0.5
+ADAPTIVE_SCALE_MAX = 2.0
+
+# Need at least this many history points before we trust the median.
+# Below this we just return the base unchanged.
+ADAPTIVE_MIN_HISTORY = 30
+
+
+def adaptive_return_floor(
+    history: list[dict],
+    base_pct: float,
+    *,
+    field: str = "atr_pct",
+    reference_pct: float = ADAPTIVE_REFERENCE_ATR_PCT,
+    min_history: int = ADAPTIVE_MIN_HISTORY,
+) -> float:
+    """Scale ``base_pct`` by the recent ATR%-regime, returning the new floor.
+
+    Lets the bot stay alert during quiet markets and avoid noise during
+    chop. The scale is a simple ratio to a reference ATR%, clamped.
+
+    Behavior:
+        median(atr_pct) ≈ 0.05% → scale 0.5 → floor 0.4% (low vol)
+        median(atr_pct) ≈ 0.10% → scale 1.0 → floor 0.8% (typical)
+        median(atr_pct) ≈ 0.20% → scale 2.0 → floor 1.6% (high vol)
+
+    Returns ``base_pct`` unchanged when history is too short.
+    """
+    atrs = history_field(history, field)
+    atrs = [a for a in atrs if a > 0]  # skip warmup zeros
+    if len(atrs) < min_history:
+        return base_pct
+    median_atr = statistics.median(atrs)
+    if median_atr <= 0:
+        return base_pct
+    scale = median_atr / reference_pct
+    scale = max(ADAPTIVE_SCALE_MIN, min(ADAPTIVE_SCALE_MAX, scale))
+    return base_pct * scale

@@ -21,6 +21,7 @@ from pathlib import Path
 
 from .features import (
     HIST_LOOKBACK_BARS,
+    adaptive_return_floor,
     clipped_z,
     history_field,
 )
@@ -195,15 +196,23 @@ class SpikeDetector:
             direction = "up" if features["return_24h"] >= 0 else "down"
 
         # --- 4. Composite gate (score + return floor + vol/atr confirm) ---
+        # The return floor scales with the recent ATR%-regime so we stay
+        # responsive during calm periods and silence noise during chop.
+        adaptive_floor = adaptive_return_floor(history, FIRE_RETURN_15M_MIN_PCT)
         composite_fired = (
             score >= FIRE_SCORE_MIN
-            and abs(return_15m) >= FIRE_RETURN_15M_MIN_PCT
+            and abs(return_15m) >= adaptive_floor
             and (atr_z >= FIRE_ATR_Z_MIN or vol_z >= FIRE_VOL_Z_MIN)
         )
         if composite_fired:
+            floor_note = (
+                f"{adaptive_floor:.2f}% (vol-adaptive)"
+                if abs(adaptive_floor - FIRE_RETURN_15M_MIN_PCT) > 1e-6
+                else f"{FIRE_RETURN_15M_MIN_PCT}%"
+            )
             reasons.extend([
                 f"score={score:.2f} ≥ {FIRE_SCORE_MIN}",
-                f"15m return {return_15m:+.2f}% ≥ {FIRE_RETURN_15M_MIN_PCT}%",
+                f"15m return {return_15m:+.2f}% ≥ {floor_note}",
                 f"ATR z={atr_z:.2f}, volume z={vol_z:.2f}",
             ])
             if oi_drop_z > 1.0:
