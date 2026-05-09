@@ -17,6 +17,7 @@ import feedparser
 import requests
 
 from .deribit import fetch_options_factor
+from .fred import fetch_macro_background
 
 log = logging.getLogger(__name__)
 
@@ -302,7 +303,8 @@ def gather_factors(spike: dict) -> list[dict]:  # noqa: ARG001 (spike reserved f
         fetch_exchange_announcements,
         fetch_derivatives,
         fetch_macro,
-        fetch_options_factor,  # Deribit IV / term structure / skew / RV
+        fetch_options_factor,    # Deribit IV / term structure / skew / RV
+        fetch_macro_background,  # FRED daily DXY/yields/VIX/FedFunds
     ]
     results: list[dict] = []
     with ThreadPoolExecutor(max_workers=len(fetchers)) as ex:
@@ -323,14 +325,16 @@ def gather_factors(spike: dict) -> list[dict]:  # noqa: ARG001 (spike reserved f
             for f in futures:
                 f.cancel()
 
-    # Priority: confirmed macro events > exchange-official > general media >
-    # derivatives spot context > options-market positioning.
+    # Priority order: imminent confirmed events > exchange announcements >
+    # general media > spot derivatives > options positioning > FRED daily
+    # background. The summarizer is told to weight in this order.
     type_priority = {
         "macro": 0,
         "exchange": 1,
         "news": 2,
         "derivatives": 3,
         "options": 4,
+        "macro_background": 5,
     }
     results.sort(key=lambda x: type_priority.get(x["type"], 9))
     return results[:10]

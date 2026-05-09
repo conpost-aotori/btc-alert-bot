@@ -18,6 +18,7 @@ data/*
 !data/.gitkeep
 !data/state.json
 !data/macro_cache.json
+!data/fred_cache.json
 !data/history.sqlite
 *.log
 

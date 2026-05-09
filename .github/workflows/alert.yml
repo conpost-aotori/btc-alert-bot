@@ -36,6 +36,7 @@ jobs:
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           LOG_LEVEL: INFO
           DRY_RUN: "false"
           # Discord 専用運用中。X 投稿を再開するときに true へ。
@@ -53,10 +54,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # state.json: changes every run (feature_history append).
           # macro_cache.json: changes ~every 4h (TTL).
+          # fred_cache.json: changes ~every 12h (TTL, optional).
           # history.sqlite: changes only when an alert fires.
-          TRACKED="data/state.json data/macro_cache.json data/history.sqlite"
-          if [ -n "$(git status --porcelain $TRACKED)" ]; then
-            git add $TRACKED 2>/dev/null || true
+          # We filter to existing files first so a missing optional cache
+          # (e.g. fred_cache.json with no FRED key) doesn't fail `git add`
+          # and accidentally skip the rest of the state commit.
+          EXISTING=""
+          for f in data/state.json data/macro_cache.json data/fred_cache.json data/history.sqlite; do
+            [ -f "$f" ] && EXISTING="$EXISTING $f"
+          done
+          if [ -n "$EXISTING" ] && [ -n "$(git status --porcelain $EXISTING)" ]; then
+            git add $EXISTING
             git commit -m "chore: update alert state [skip ci]"
             git push
           else
