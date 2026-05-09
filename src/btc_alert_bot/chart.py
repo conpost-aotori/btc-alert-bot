@@ -61,7 +61,8 @@ log = logging.getLogger(__name__)
 # (OKX bar code, num candles) per spike window.
 # OKX bar codes: "1m","3m","5m","15m","30m","1H","2H","4H","6H","12H","1D"...
 TIMEFRAME_BY_WINDOW: dict[str, tuple[str, int]] = {
-    "1m":  ("1m",  60),   # 1h of 1min candles — for fast-track 1m spikes
+    "1m":  ("1m",  60),   # 1h of 1min candles — fast-track 1m spikes
+    "5m":  ("1m", 120),   # 2h of 1min candles — composite 5m spikes
     "15m": ("5m",  72),   # 6h of 5min candles
     "1h":  ("5m",  72),   # 6h of 5min candles
     "24h": ("15m", 96),   # 24h of 15min candles

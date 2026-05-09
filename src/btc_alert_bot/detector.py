@@ -43,11 +43,30 @@ SCORE_WEIGHTS = {
 
 # Hard fire conditions (all must hold).
 FIRE_SCORE_MIN = 2.6
-FIRE_RETURN_15M_MIN_PCT = 0.8
 FIRE_ATR_Z_MIN = 1.2
 FIRE_VOL_Z_MIN = 1.5
 
+# Per-window return floors.
+# 5m is the most responsive composite path — moves that complete in 5min get
+# their own window so a single sustained 15min run only triggers one alert,
+# not two cascading ones (5m → 15m).
+# 15m is intentionally tightened so the same move doesn't fire twice (5m
+# alert, then a 15m alert 10 minutes later for the same trend).
+FIRE_RETURN_5M_MIN_PCT = 0.5
+FIRE_RETURN_15M_MIN_PCT = 1.2
+
+# Adaptive reference. ``features["atr_pct"]`` is already per-5-min-bar ATR
+# regardless of which return horizon we're testing, so both 5m and 15m
+# adaptive floors scale against the same baseline. The timeframe-specific
+# part is already encoded in the *base* floor (FIRE_RETURN_5M_MIN_PCT vs
+# FIRE_RETURN_15M_MIN_PCT). A previous version divided this by sqrt(3)
+# for 5m, which roughly doubled the 5m floor and made the new path
+# subsumed by the hard fallback.
+ADAPTIVE_REF_ATR_PCT_5M = 0.10
+ADAPTIVE_REF_ATR_PCT_15M = 0.10
+
 # "Always alert" overrides — catch obvious moves even with thin history.
+HARD_FALLBACK_RETURN_5M_PCT = 1.0
 HARD_FALLBACK_RETURN_15M_PCT = 1.5
 HARD_FALLBACK_RETURN_1H_PCT = 2.0
 HARD_FALLBACK_RETURN_24H_PCT = 5.0
@@ -186,43 +205,86 @@ class SpikeDetector:
             + SCORE_WEIGHTS["funding_abs"] * funding_abs_z
         )
 
+        return_5m = features["return_5m"]
         return_15m = features["return_15m"]
-        direction = "up" if return_15m >= 0 else "down"
 
         reasons: list[str] = []
+        fired_window: str | None = None
+        fired_change: float = 0.0
+        fired_direction: str = "up"
 
         # --- 3. Hard fallback first (catches obvious moves regardless of score) ---
-        hard_fired = False
-        if abs(return_15m) >= HARD_FALLBACK_RETURN_15M_PCT:
-            hard_fired = True
+        if abs(return_5m) >= HARD_FALLBACK_RETURN_5M_PCT:
+            fired_window = "5m"
+            fired_change = return_5m
+            fired_direction = "up" if return_5m >= 0 else "down"
+            reasons.append(f"5m move {return_5m:+.2f}% over hard floor")
+        elif abs(return_15m) >= HARD_FALLBACK_RETURN_15M_PCT:
+            fired_window = "15m"
+            fired_change = return_15m
+            fired_direction = "up" if return_15m >= 0 else "down"
             reasons.append(f"15m move {return_15m:+.2f}% over hard floor")
         elif abs(features["return_1h"]) >= HARD_FALLBACK_RETURN_1H_PCT:
-            hard_fired = True
-            reasons.append(f"1h move {features['return_1h']:+.2f}% over hard floor")
-            direction = "up" if features["return_1h"] >= 0 else "down"
+            fired_window = "1h"
+            fired_change = features["return_1h"]
+            fired_direction = "up" if features["return_1h"] >= 0 else "down"
+            reasons.append(f"1h move {fired_change:+.2f}% over hard floor")
         elif abs(features["return_24h"]) >= HARD_FALLBACK_RETURN_24H_PCT:
-            hard_fired = True
-            reasons.append(f"24h move {features['return_24h']:+.2f}% over hard floor")
-            direction = "up" if features["return_24h"] >= 0 else "down"
+            fired_window = "24h"
+            fired_change = features["return_24h"]
+            fired_direction = "up" if features["return_24h"] >= 0 else "down"
+            reasons.append(f"24h move {fired_change:+.2f}% over hard floor")
 
-        # --- 4. Composite gate (score + return floor + vol/atr confirm) ---
-        # The return floor scales with the recent ATR%-regime so we stay
-        # responsive during calm periods and silence noise during chop.
-        adaptive_floor = adaptive_return_floor(history, FIRE_RETURN_15M_MIN_PCT)
-        composite_fired = (
+        # --- 4. Composite gate: independent 5m and 15m windows ---
+        # 5m is the responsive timeframe — fires often. 15m is the trend-
+        # confirmation timeframe — fires only on sustained moves so it
+        # doesn't replay a 5m alert as a separate "15m" alert 10min later.
+        adaptive_floor_5m = adaptive_return_floor(
+            history, FIRE_RETURN_5M_MIN_PCT,
+            reference_pct=ADAPTIVE_REF_ATR_PCT_5M,
+        )
+        adaptive_floor_15m = adaptive_return_floor(
+            history, FIRE_RETURN_15M_MIN_PCT,
+            reference_pct=ADAPTIVE_REF_ATR_PCT_15M,
+        )
+
+        passes_score_and_confirm = (
             score >= FIRE_SCORE_MIN
-            and abs(return_15m) >= adaptive_floor
             and (atr_z >= FIRE_ATR_Z_MIN or vol_z >= FIRE_VOL_Z_MIN)
         )
-        if composite_fired:
+
+        # Strength = how many "floor units" the move covers. Higher = clearer.
+        strength_5m = (
+            abs(return_5m) / adaptive_floor_5m if adaptive_floor_5m > 0 else 0.0
+        )
+        strength_15m = (
+            abs(return_15m) / adaptive_floor_15m if adaptive_floor_15m > 0 else 0.0
+        )
+        passes_5m = passes_score_and_confirm and strength_5m >= 1.0
+        passes_15m = passes_score_and_confirm and strength_15m >= 1.0
+
+        # If hard fallback already chose a window, don't downgrade it.
+        # Otherwise pick the timeframe with the higher relative strength.
+        if fired_window is None and (passes_5m or passes_15m):
+            if passes_5m and (not passes_15m or strength_5m >= strength_15m):
+                fired_window = "5m"
+                fired_change = return_5m
+                fired_direction = "up" if return_5m >= 0 else "down"
+                floor_used, base_pct = adaptive_floor_5m, FIRE_RETURN_5M_MIN_PCT
+            else:
+                fired_window = "15m"
+                fired_change = return_15m
+                fired_direction = "up" if return_15m >= 0 else "down"
+                floor_used, base_pct = adaptive_floor_15m, FIRE_RETURN_15M_MIN_PCT
+
             floor_note = (
-                f"{adaptive_floor:.2f}% (vol-adaptive)"
-                if abs(adaptive_floor - FIRE_RETURN_15M_MIN_PCT) > 1e-6
-                else f"{FIRE_RETURN_15M_MIN_PCT}%"
+                f"{floor_used:.2f}% (vol-adaptive)"
+                if abs(floor_used - base_pct) > 1e-6
+                else f"{base_pct}%"
             )
             reasons.extend([
                 f"score={score:.2f} ≥ {FIRE_SCORE_MIN}",
-                f"15m return {return_15m:+.2f}% ≥ {floor_note}",
+                f"{fired_window} return {fired_change:+.2f}% ≥ {floor_note}",
                 f"ATR z={atr_z:.2f}, volume z={vol_z:.2f}",
             ])
             if oi_drop_z > 1.0:
@@ -230,21 +292,23 @@ class SpikeDetector:
             if funding_abs_z > 1.5:
                 reasons.append(f"|funding| z={funding_abs_z:.2f} (crowded)")
 
-        if not (hard_fired or composite_fired):
+        if fired_window is None:
             log.info(
-                "No spike — score=%.2f, 15m=%+.2f%%, atr_z=%.2f, vol_z=%.2f",
-                score, return_15m, atr_z, vol_z,
+                "No spike — score=%.2f, 5m=%+.2f%% (floor %.2f), "
+                "15m=%+.2f%% (floor %.2f), atr_z=%.2f, vol_z=%.2f",
+                score, return_5m, adaptive_floor_5m,
+                return_15m, adaptive_floor_15m, atr_z, vol_z,
             )
             return None
 
         # --- 5. Cooldown (directional) ---
-        if self._suppressed_by_cooldown(direction_cd, direction):
+        if self._suppressed_by_cooldown(direction_cd, fired_direction):
             return None
 
         return {
-            "window": "15m",
-            "change": return_15m,
-            "direction": direction,
+            "window": fired_window,
+            "change": fired_change,
+            "direction": fired_direction,
             "score": round(score, 2),
             "reasons": reasons,
             "features": features,
@@ -255,6 +319,7 @@ class SpikeDetector:
         """Pre-history-warmup gate: only fire on obvious moves."""
         direction_cd = self._cooldown_direction(price_data["timestamp"])
         for window, value, hard in (
+            ("5m",  features.get("return_5m",  0.0), HARD_FALLBACK_RETURN_5M_PCT),
             ("15m", features.get("return_15m", 0.0), HARD_FALLBACK_RETURN_15M_PCT),
             ("1h",  features.get("return_1h",  0.0), HARD_FALLBACK_RETURN_1H_PCT),
             ("24h", features.get("return_24h", 0.0), HARD_FALLBACK_RETURN_24H_PCT),

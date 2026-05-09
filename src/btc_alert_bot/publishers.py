@@ -11,6 +11,47 @@ import tweepy
 
 log = logging.getLogger(__name__)
 
+# Twitter weighted-character limit. CJK / kana / hangul characters count
+# as 2; ASCII / Latin characters count as 1. Plain `len()` undercounts
+# Japanese tweets and the API rejects the post past the budget.
+X_WEIGHTED_LIMIT = 280
+
+
+def _x_char_weight(c: str) -> int:
+    """Return 1 or 2 per Twitter's weighted-character rules.
+
+    Reference: https://developer.x.com/en/docs/counting-characters
+    The exact spec is range-based; this approximation covers the usual
+    CJK / hiragana / katakana / hangul blocks accurately.
+    """
+    cp = ord(c)
+    # ASCII + Latin extended (matches Twitter's 1-weight ranges).
+    if cp <= 0x10FF:
+        return 1
+    # All wider scripts (CJK, kana, hangul, fullwidth punctuation, …) = 2.
+    return 2
+
+
+def x_weighted_length(s: str) -> int:
+    return sum(_x_char_weight(c) for c in s)
+
+
+def x_truncate_to_weight(s: str, budget: int) -> str:
+    """Trim ``s`` so its weighted length is <= budget. Adds an ellipsis."""
+    if x_weighted_length(s) <= budget:
+        return s
+    out: list[str] = []
+    used = 0
+    # Reserve 1 weighted unit for the trailing ellipsis (… is 1-weight).
+    target = max(0, budget - 1)
+    for c in s:
+        w = _x_char_weight(c)
+        if used + w > target:
+            break
+        out.append(c)
+        used += w
+    return "".join(out) + "…"
+
 
 def post_discord(
     summary: str,
@@ -103,16 +144,20 @@ def post_x(
         log.warning("X API keys incomplete — skipping X post")
         return False
 
-    # Build tweet text: header line + summary + hashtags.
-    arrow = "📈" if spike["direction"] == "up" else "📉"
-    header = f"{arrow} BTC {spike['change']:+.2f}% / {spike['window']}"
+    # Build tweet text: alert header + summary + hashtags.
+    # Mirrors the Discord embed title for consistency.
+    header = (
+        f"🚨 BTC緊急価格変動速報 "
+        f"({spike['change']:+.2f}% / {spike['window']})"
+    )
     hashtags = "#BTC #Bitcoin #暗号資産"
-    # Twitter's hard limit is 280 chars; we leave a small margin for
-    # newlines + hashtags. Truncate the summary if needed.
-    max_summary = 280 - len(header) - len(hashtags) - 4  # 4 for newlines
-    body = summary
-    if len(body) > max_summary:
-        body = body[: max_summary - 1] + "…"
+    # Twitter weights CJK chars at 2 each — `len()` would undercount and
+    # let the API reject long Japanese summaries. Use weighted length.
+    fixed_weight = (
+        x_weighted_length(header) + x_weighted_length(hashtags) + 2  # 2 newlines
+    )
+    body_budget = max(20, X_WEIGHTED_LIMIT - fixed_weight)
+    body = x_truncate_to_weight(summary, body_budget)
     text = f"{header}\n{body}\n{hashtags}"
 
     try:
