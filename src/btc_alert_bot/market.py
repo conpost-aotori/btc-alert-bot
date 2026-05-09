@@ -57,15 +57,24 @@ def fetch_klines(bar: str = "5m", limit: int = 200) -> list[dict]:
     rows.reverse()
     out: list[dict] = []
     for r in rows:
-        # Schema: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+        # OKX schema: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+        # - vol         : number of contracts (1 contract = 0.01 BTC for SWAP)
+        # - volCcy      : volume in base currency (BTC)
+        # - volCcyQuote : volume in quote currency (USDT)
+        # We expose all three with explicit names so callers can't confuse
+        # "contracts" with "BTC" (which an earlier version did).
         out.append({
             "ts": datetime.fromtimestamp(int(r[0]) / 1000, tz=timezone.utc),
             "open": float(r[1]),
             "high": float(r[2]),
             "low": float(r[3]),
             "close": float(r[4]),
-            "volume": float(r[5]),       # in BTC contracts
-            "turnover": float(r[6]),     # in BTC
+            "volume_contracts": float(r[5]),
+            "volume_btc": float(r[6]),
+            "volume_usdt": float(r[7]) if len(r) > 7 else 0.0,
+            # Back-compat aliases (some chart code still reads ``volume``).
+            "volume": float(r[5]),
+            "turnover": float(r[6]),
             "confirmed": r[8] == "1" if len(r) > 8 else True,
         })
     return out
@@ -156,6 +165,97 @@ def fetch_current_funding() -> float:
 # ---------------------------------------------------------------------------
 # Bundled snapshot for the detection pipeline
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Per-spike-window OHLCV helper — used by publishers to enrich the alert
+# embed with the actual high/low/volume of the bar that triggered.
+# ---------------------------------------------------------------------------
+
+from datetime import timedelta  # noqa: E402
+
+# Map an alert window to the OKX bar code we need to look up.
+_WINDOW_TO_OKX_BAR: dict[str, str] = {
+    "1m":  "1m",
+    "3m":  "3m",
+    "5m":  "5m",
+    "15m": "15m",
+    "1h":  "1H",
+    # 24h+ no longer fires alerts (removed at the user's request) but we
+    # leave the mapping here so a stale spike object doesn't crash.
+    "24h": "1D",
+}
+
+_WINDOW_DURATION_S: dict[str, int] = {
+    "1m": 60, "3m": 180, "5m": 300, "15m": 900, "1h": 3600, "24h": 86400,
+}
+
+
+def _format_ohlcv(c: dict) -> dict:
+    return {
+        "ts": c["ts"].isoformat(),
+        "open": c["open"],
+        "high": c["high"],
+        "low": c["low"],
+        "close": c["close"],
+        # Use the actual base/quote-currency volumes — earlier code
+        # mistakenly labelled the contract count as BTC and over-stated
+        # bar volume by 100×.
+        "volume_btc": c.get("volume_btc", 0.0),
+        "volume_usd": c.get(
+            "volume_usdt", c.get("volume_btc", 0.0) * c["close"]
+        ),
+    }
+
+
+def fetch_window_ohlcv(
+    window: str,
+    anchor_ts: str | None = None,
+) -> dict | None:
+    """Return the OHLCV bar that the spike actually triggered from.
+
+    ``anchor_ts`` is the timestamp the detector observed (typically
+    ``features["ts"]``, which equals the LIVE bar's ts in cron mode and
+    the just-confirmed bar's ts in WS mode). If supplied, the matching
+    bar is returned regardless of confirm flag — that's the bar the
+    user actually wants to see in the embed.
+
+    Falls back to "most recent confirmed bar" when no anchor is given.
+    Returns None on unknown window / fetch failure / no data. Never raises.
+    """
+    bar = _WINDOW_TO_OKX_BAR.get(window)
+    if not bar:
+        return None
+    try:
+        # limit=3 leaves room for clock-skew / late updates while staying tiny.
+        candles = fetch_klines(bar=bar, limit=3)
+    except Exception as e:
+        log.warning("fetch_window_ohlcv(%s) failed: %s", window, e)
+        return None
+    if not candles:
+        return None
+
+    # Try anchor-ts match first — this picks the in-progress bar in cron
+    # mode (where detection used its live close) and the just-closed bar
+    # in WS mode (where detection ran on confirm=1).
+    if anchor_ts:
+        try:
+            anchor_dt = datetime.fromisoformat(anchor_ts)
+        except Exception:
+            anchor_dt = None
+        if anchor_dt is not None:
+            bar_secs = _WINDOW_DURATION_S.get(window, 300)
+            for c in reversed(candles):
+                start = c["ts"]
+                if start <= anchor_dt < start + timedelta(seconds=bar_secs):
+                    return _format_ohlcv(c)
+
+    # Fallback: most recent confirmed bar (matches fast-track semantics
+    # where the trigger is always a just-closed candle).
+    for c in reversed(candles):
+        if c.get("confirmed"):
+            return _format_ohlcv(c)
+    return _format_ohlcv(candles[-1])
+
 
 def fetch_market_snapshot() -> dict:
     """Single call surface used by main.py — fetches everything detection needs.

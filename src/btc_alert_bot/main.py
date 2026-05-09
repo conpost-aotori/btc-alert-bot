@@ -28,7 +28,7 @@ from .detector import (
 )
 from .features import compute_market_features
 from .history import find_similar_alerts, record_alert
-from .market import fetch_market_snapshot
+from .market import fetch_market_snapshot, fetch_window_ohlcv
 from .price import fetch_btc_price
 from .publishers import post_discord, post_x
 from .summarizer import summarize
@@ -131,6 +131,13 @@ def main() -> int:
     except Exception as e:
         log.warning("Chart render failed: %s — posting text only", e)
 
+    # 8b. Window-specific OHLCV (used to enrich the Discord embed with
+    #     bar-level high/low and volume instead of opaque 24h figures).
+    #     Pass features.ts so we look up the actual trigger bar — in cron
+    #     mode that's the LIVE in-progress bar, not the previous closed one.
+    anchor_ts = (features or {}).get("ts") or price_data.get("timestamp")
+    window_ohlcv = fetch_window_ohlcv(spike["window"], anchor_ts=anchor_ts)
+
     # 9. Publish (or dry-run preview). Track per-channel for the history DB.
     dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
     enable_x = os.getenv("ENABLE_X_POST", "false").lower() == "true"
@@ -141,7 +148,8 @@ def main() -> int:
         delivered_discord = True  # treat dry-run as success for cooldown
     else:
         delivered_discord = post_discord(
-            summary, price_data, spike, chart_png=chart_png
+            summary, price_data, spike,
+            chart_png=chart_png, window_ohlcv=window_ohlcv,
         )
         if enable_x:
             delivered_x = post_x(

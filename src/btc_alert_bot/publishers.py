@@ -58,11 +58,16 @@ def post_discord(
     price_data: dict,
     spike: dict,
     chart_png: bytes | None = None,
+    window_ohlcv: dict | None = None,
 ) -> bool:
     """Post an embed alert to Discord. Returns True on success, False on failure.
 
     Caller should treat False as "alert did not reach users" — typically meaning
     cooldown state should NOT be persisted, so the next cron tick can retry.
+
+    ``window_ohlcv`` (optional) is the OHLCV of the bar that triggered, in
+    the spike's own timeframe. When supplied it replaces the legacy 24h
+    range / 24h volume fields with bar-specific high/low and volume.
     """
     webhook = os.getenv("DISCORD_WEBHOOK_URL")
     if not webhook:
@@ -70,19 +75,41 @@ def post_discord(
         return False
 
     color = 0x00C853 if spike["direction"] == "up" else 0xD32F2F
-    embed = {
-        "title": f"🚨 BTC緊急価格変動速報 ({spike['change']:+.2f}% / {spike['window']})",
-        "description": summary,
-        "color": color,
-        "fields": [
+    fields = [
+        {
+            "name": "現在価格",
+            "value": f"${price_data['price_usd']:,.2f}",
+            "inline": True,
+        },
+    ]
+    window = spike.get("window", "")
+    if window_ohlcv:
+        high = window_ohlcv["high"]
+        low = window_ohlcv["low"]
+        spread = high - low
+        vol_btc = window_ohlcv["volume_btc"]
+        vol_usd = window_ohlcv["volume_usd"]
+        fields.extend([
             {
-                "name": "現在価格",
-                "value": f"${price_data['price_usd']:,.2f}",
+                "name": f"{window}高安",
+                "value": f"${low:,.0f} – ${high:,.0f}\n(差 ${spread:,.0f})",
                 "inline": True,
             },
             {
+                "name": f"{window}出来高",
+                "value": f"{vol_btc:,.1f} BTC\n(${vol_usd / 1e6:,.1f}M)",
+                "inline": True,
+            },
+        ])
+    else:
+        # Fallback to the legacy 24h fields if the window OHLCV fetch failed.
+        fields.extend([
+            {
                 "name": "24h Range",
-                "value": f"${price_data['low_24h']:,.0f} – ${price_data['high_24h']:,.0f}",
+                "value": (
+                    f"${price_data['low_24h']:,.0f} – "
+                    f"${price_data['high_24h']:,.0f}"
+                ),
                 "inline": True,
             },
             {
@@ -90,8 +117,14 @@ def post_discord(
                 "value": f"${price_data['volume_24h'] / 1e9:,.1f}B",
                 "inline": True,
             },
-        ],
-        "footer": {"text": "Source: CoinGecko + Bybit + RSS feeds"},
+        ])
+
+    embed = {
+        "title": f"🚨 BTC緊急価格変動速報 ({spike['change']:+.2f}% / {window})",
+        "description": summary,
+        "color": color,
+        "fields": fields,
+        "footer": {"text": "Source: OKX (WS) + CoinGecko + RSS feeds"},
     }
 
     # If we have a chart, reference the multipart attachment by filename.

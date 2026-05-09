@@ -46,7 +46,7 @@ from .detector import (
 )
 from .features import compute_market_features
 from .history import find_similar_alerts, record_alert
-from .market import fetch_market_snapshot
+from .market import fetch_market_snapshot, fetch_window_ohlcv
 from .price import fetch_btc_price
 from .publishers import post_discord, post_x
 from .summarizer import summarize
@@ -362,6 +362,12 @@ class RealtimeBot:
             except Exception as e:
                 log.warning("Chart render failed: %s", e)
 
+            # Fast-track has no `features` — anchor on the alert ts itself,
+            # which falls inside the just-closed trigger bar.
+            window_ohlcv = fetch_window_ohlcv(
+                spike["window"], anchor_ts=price_data.get("timestamp")
+            )
+
             dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
             enable_x = os.getenv("ENABLE_X_POST", "false").lower() == "true"
             d_disc = d_x = False
@@ -370,7 +376,8 @@ class RealtimeBot:
                 d_disc = True
             else:
                 d_disc = post_discord(
-                    summary, price_data, spike, chart_png=chart_png
+                    summary, price_data, spike,
+                    chart_png=chart_png, window_ohlcv=window_ohlcv,
                 )
                 if enable_x:
                     d_x = post_x(
@@ -443,6 +450,11 @@ class RealtimeBot:
             except Exception as e:
                 log.warning("Chart render failed: %s", e)
 
+            anchor_ts = (features or {}).get("ts") or price_data.get("timestamp")
+            window_ohlcv = fetch_window_ohlcv(
+                spike["window"], anchor_ts=anchor_ts
+            )
+
             dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
             enable_x = os.getenv("ENABLE_X_POST", "false").lower() == "true"
             d_disc = d_x = False
@@ -451,7 +463,8 @@ class RealtimeBot:
                 d_disc = True
             else:
                 d_disc = post_discord(
-                    summary, price_data, spike, chart_png=chart_png
+                    summary, price_data, spike,
+                    chart_png=chart_png, window_ohlcv=window_ohlcv,
                 )
                 if enable_x:
                     d_x = post_x(

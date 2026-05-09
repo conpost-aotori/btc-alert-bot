@@ -25,7 +25,7 @@ from btc_alert_bot.analyzers import gather_factors
 from btc_alert_bot.chart import render_chart
 from btc_alert_bot.features import compute_market_features
 from btc_alert_bot.history import find_similar_alerts, record_alert
-from btc_alert_bot.market import fetch_market_snapshot
+from btc_alert_bot.market import fetch_market_snapshot, fetch_window_ohlcv
 from btc_alert_bot.price import fetch_btc_price
 from btc_alert_bot.publishers import post_discord, post_x
 from btc_alert_bot.summarizer import summarize
@@ -113,9 +113,18 @@ def main() -> int:
         log.warning("Chart render failed: %s — text only", e)
         chart_png = None
 
+    # 6a. Window OHLCV for the embed enrichment.
+    window_ohlcv = fetch_window_ohlcv(
+        spike["window"],
+        anchor_ts=(features or {}).get("ts") or price_data.get("timestamp"),
+    )
+
     # 6. Discord post.
     log.info("Posting to Discord...")
-    delivered_discord = post_discord(summary, price_data, spike, chart_png=chart_png)
+    delivered_discord = post_discord(
+        summary, price_data, spike,
+        chart_png=chart_png, window_ohlcv=window_ohlcv,
+    )
 
     # 6b. X post — only if ENABLE_X_POST=true (so a stray local run doesn't
     #     accidentally consume quota / publish a fake spike to followers).
