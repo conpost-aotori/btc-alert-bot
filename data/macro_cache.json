@@ -1,0 +1,838 @@
+{
+  "fetched_at": "2026-05-09T15:24:15.464875+00:00",
+  "events": [
+    {
+      "title": "Bank Holiday",
+      "country": "JPY",
+      "impact": "Holiday",
+      "url": "https://www.forexfactory.com/calendar/393-jn-bank-holiday",
+      "datetime_utc": "2026-05-04T03:00:00+00:00"
+    },
+    {
+      "title": "Bank Holiday",
+      "country": "CNY",
+      "impact": "Holiday",
+      "url": "https://www.forexfactory.com/calendar/468-ch-bank-holiday",
+      "datetime_utc": "2026-05-04T03:01:00+00:00"
+    },
+    {
+      "title": "MI Inflation Gauge m/m",
+      "country": "AUD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/294-au-mi-inflation-gauge-mm",
+      "datetime_utc": "2026-05-04T05:00:00+00:00"
+    },
+    {
+      "title": "ANZ Job Advertisements m/m",
+      "country": "AUD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/234-au-anz-job-advertisements-mm",
+      "datetime_utc": "2026-05-04T05:30:00+00:00"
+    },
+    {
+      "title": "Building Approvals m/m",
+      "country": "AUD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/202-au-building-approvals-mm",
+      "datetime_utc": "2026-05-04T05:30:00+00:00"
+    },
+    {
+      "title": "Bank Holiday",
+      "country": "GBP",
+      "impact": "Holiday",
+      "url": "https://www.forexfactory.com/calendar/390-uk-bank-holiday",
+      "datetime_utc": "2026-05-04T11:00:00+00:00"
+    },
+    {
+      "title": "Spanish Manufacturing PMI",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/557-sp-manufacturing-pmi",
+      "datetime_utc": "2026-05-04T11:15:00+00:00"
+    },
+    {
+      "title": "Manufacturing PMI",
+      "country": "CHF",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/273-sz-manufacturing-pmi",
+      "datetime_utc": "2026-05-04T11:30:00+00:00"
+    },
+    {
+      "title": "Italian Manufacturing PMI",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/547-it-manufacturing-pmi",
+      "datetime_utc": "2026-05-04T11:45:00+00:00"
+    },
+    {
+      "title": "French Final Manufacturing PMI",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/617-fr-final-manufacturing-pmi",
+      "datetime_utc": "2026-05-04T11:50:00+00:00"
+    },
+    {
+      "title": "German Final Manufacturing PMI",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/618-ge-final-manufacturing-pmi",
+      "datetime_utc": "2026-05-04T11:55:00+00:00"
+    },
+    {
+      "title": "Final Manufacturing PMI",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/264-ez-final-manufacturing-pmi",
+      "datetime_utc": "2026-05-04T12:00:00+00:00"
+    },
+    {
+      "title": "Sentix Investor Confidence",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/320-ez-sentix-investor-confidence",
+      "datetime_utc": "2026-05-04T12:30:00+00:00"
+    },
+    {
+      "title": "Eurogroup Meetings",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/562-ez-eurogroup-meetings",
+      "datetime_utc": "2026-05-04T13:15:00+00:00"
+    },
+    {
+      "title": "Factory Orders m/m",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/351-us-factory-orders-mm",
+      "datetime_utc": "2026-05-04T18:00:00+00:00"
+    },
+    {
+      "title": "FOMC Member Williams Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/518-us-fomc-member-williams-speaks",
+      "datetime_utc": "2026-05-04T20:50:00+00:00"
+    },
+    {
+      "title": "German Buba President Nagel Speaks",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/851-ge-buba-president-nagel-speaks",
+      "datetime_utc": "2026-05-04T21:05:00+00:00"
+    },
+    {
+      "title": "Loan Officer Survey",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/473-us-loan-officer-survey",
+      "datetime_utc": "2026-05-04T22:00:00+00:00"
+    },
+    {
+      "title": "BOC Gov Macklem Speaks",
+      "country": "CAD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/840-ca-boc-gov-macklem-speaks",
+      "datetime_utc": "2026-05-04T23:30:00+00:00"
+    },
+    {
+      "title": "Bank Holiday",
+      "country": "JPY",
+      "impact": "Holiday",
+      "url": "https://www.forexfactory.com/calendar/393-jn-bank-holiday",
+      "datetime_utc": "2026-05-05T03:00:00+00:00"
+    },
+    {
+      "title": "Bank Holiday",
+      "country": "CNY",
+      "impact": "Holiday",
+      "url": "https://www.forexfactory.com/calendar/468-ch-bank-holiday",
+      "datetime_utc": "2026-05-05T03:01:00+00:00"
+    },
+    {
+      "title": "ANZ Commodity Prices m/m",
+      "country": "NZD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/190-nz-anz-commodity-prices-mm",
+      "datetime_utc": "2026-05-05T05:00:00+00:00"
+    },
+    {
+      "title": "Household Spending m/m",
+      "country": "AUD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/923-au-household-spending-mm",
+      "datetime_utc": "2026-05-05T05:30:00+00:00"
+    },
+    {
+      "title": "Cash Rate",
+      "country": "AUD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/21-au-cash-rate",
+      "datetime_utc": "2026-05-05T08:30:00+00:00"
+    },
+    {
+      "title": "RBA Monetary Policy Statement",
+      "country": "AUD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/415-au-rba-monetary-policy-statement",
+      "datetime_utc": "2026-05-05T08:30:00+00:00"
+    },
+    {
+      "title": "RBA Rate Statement",
+      "country": "AUD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/22-au-rba-rate-statement",
+      "datetime_utc": "2026-05-05T08:30:00+00:00"
+    },
+    {
+      "title": "RBA Press Conference",
+      "country": "AUD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/906-au-rba-press-conference",
+      "datetime_utc": "2026-05-05T09:30:00+00:00"
+    },
+    {
+      "title": "CPI m/m",
+      "country": "CHF",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/100-sz-cpi-mm",
+      "datetime_utc": "2026-05-05T10:30:00+00:00"
+    },
+    {
+      "title": "Spanish Unemployment Change",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/561-sp-unemployment-change",
+      "datetime_utc": "2026-05-05T11:00:00+00:00"
+    },
+    {
+      "title": "ECOFIN Meetings",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/504-ez-ecofin-meetings",
+      "datetime_utc": "2026-05-05T13:15:00+00:00"
+    },
+    {
+      "title": "Trade Balance",
+      "country": "CAD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/118-ca-trade-balance",
+      "datetime_utc": "2026-05-05T16:30:00+00:00"
+    },
+    {
+      "title": "ECB President Lagarde Speaks",
+      "country": "EUR",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/832-ez-ecb-president-lagarde-speaks",
+      "datetime_utc": "2026-05-05T16:30:00+00:00"
+    },
+    {
+      "title": "Trade Balance",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/117-us-trade-balance",
+      "datetime_utc": "2026-05-05T16:30:00+00:00"
+    },
+    {
+      "title": "French Gov Budget Balance",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/378-fr-gov-budget-balance",
+      "datetime_utc": "2026-05-05T17:31:00+00:00"
+    },
+    {
+      "title": "Final Services PMI",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/584-us-final-services-pmi",
+      "datetime_utc": "2026-05-05T17:45:00+00:00"
+    },
+    {
+      "title": "New Home Sales",
+      "country": "USD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/231-us-new-home-sales",
+      "datetime_utc": "2026-05-05T17:59:00+00:00"
+    },
+    {
+      "title": "ISM Services PMI",
+      "country": "USD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/253-us-ism-services-pmi",
+      "datetime_utc": "2026-05-05T18:00:00+00:00"
+    },
+    {
+      "title": "JOLTS Job Openings",
+      "country": "USD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/578-us-jolts-job-openings",
+      "datetime_utc": "2026-05-05T18:00:00+00:00"
+    },
+    {
+      "title": "New Home Sales",
+      "country": "USD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/231-us-new-home-sales",
+      "datetime_utc": "2026-05-05T18:00:00+00:00"
+    },
+    {
+      "title": "FOMC Member Bowman Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/812-us-fomc-member-bowman-speaks",
+      "datetime_utc": "2026-05-05T18:00:00+00:00"
+    },
+    {
+      "title": "RCM/TIPP Economic Optimism",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/237-us-rcmtipp-economic-optimism",
+      "datetime_utc": "2026-05-05T18:03:00+00:00"
+    },
+    {
+      "title": "GDT Price Index",
+      "country": "NZD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/602-nz-gdt-price-index",
+      "datetime_utc": "2026-05-05T19:37:00+00:00"
+    },
+    {
+      "title": "FOMC Member Barr Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/880-us-fomc-member-barr-speaks",
+      "datetime_utc": "2026-05-05T20:30:00+00:00"
+    },
+    {
+      "title": "API Weekly Statistical Bulletin",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/754-us-api-weekly-statistical-bulletin",
+      "datetime_utc": "2026-05-06T00:30:00+00:00"
+    },
+    {
+      "title": "RBNZ Financial Stability Report",
+      "country": "NZD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/25-nz-rbnz-financial-stability-report",
+      "datetime_utc": "2026-05-06T01:00:00+00:00"
+    },
+    {
+      "title": "Employment Change q/q",
+      "country": "NZD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/74-nz-employment-change-qq",
+      "datetime_utc": "2026-05-06T02:45:00+00:00"
+    },
+    {
+      "title": "Unemployment Rate",
+      "country": "NZD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/65-nz-unemployment-rate",
+      "datetime_utc": "2026-05-06T02:45:00+00:00"
+    },
+    {
+      "title": "Labor Cost Index q/q",
+      "country": "NZD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/183-nz-labor-cost-index-qq",
+      "datetime_utc": "2026-05-06T02:45:00+00:00"
+    },
+    {
+      "title": "Bank Holiday",
+      "country": "JPY",
+      "impact": "Holiday",
+      "url": "https://www.forexfactory.com/calendar/393-jn-bank-holiday",
+      "datetime_utc": "2026-05-06T03:00:00+00:00"
+    },
+    {
+      "title": "RBNZ Gov Breman Speaks",
+      "country": "NZD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/927-nz-rbnz-gov-breman-speaks",
+      "datetime_utc": "2026-05-06T05:00:00+00:00"
+    },
+    {
+      "title": "RatingDog Services PMI",
+      "country": "CNY",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/591-ch-ratingdog-services-pmi",
+      "datetime_utc": "2026-05-06T05:45:00+00:00"
+    },
+    {
+      "title": "French Industrial Production m/m",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/222-fr-industrial-production-mm",
+      "datetime_utc": "2026-05-06T10:45:00+00:00"
+    },
+    {
+      "title": "Spanish Services PMI",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/558-sp-services-pmi",
+      "datetime_utc": "2026-05-06T11:15:00+00:00"
+    },
+    {
+      "title": "Italian Services PMI",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/548-it-services-pmi",
+      "datetime_utc": "2026-05-06T11:45:00+00:00"
+    },
+    {
+      "title": "French Final Services PMI",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/619-fr-final-services-pmi",
+      "datetime_utc": "2026-05-06T11:50:00+00:00"
+    },
+    {
+      "title": "German Final Services PMI",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/620-ge-final-services-pmi",
+      "datetime_utc": "2026-05-06T11:55:00+00:00"
+    },
+    {
+      "title": "Final Services PMI",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/265-ez-final-services-pmi",
+      "datetime_utc": "2026-05-06T12:00:00+00:00"
+    },
+    {
+      "title": "Italian Retail Sales m/m",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/108-it-retail-sales-mm",
+      "datetime_utc": "2026-05-06T12:00:00+00:00"
+    },
+    {
+      "title": "Final Services PMI",
+      "country": "GBP",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/250-uk-final-services-pmi",
+      "datetime_utc": "2026-05-06T12:30:00+00:00"
+    },
+    {
+      "title": "PPI m/m",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/89-ez-ppi-mm",
+      "datetime_utc": "2026-05-06T13:00:00+00:00"
+    },
+    {
+      "title": "ADP Non-Farm Employment Change",
+      "country": "USD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/75-us-adp-non-farm-employment-change",
+      "datetime_utc": "2026-05-06T16:15:00+00:00"
+    },
+    {
+      "title": "FOMC Member Musalem Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/911-us-fomc-member-musalem-speaks",
+      "datetime_utc": "2026-05-06T17:30:00+00:00"
+    },
+    {
+      "title": "Ivey PMI",
+      "country": "CAD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/254-ca-ivey-pmi",
+      "datetime_utc": "2026-05-06T18:00:00+00:00"
+    },
+    {
+      "title": "Crude Oil Inventories",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/10-us-crude-oil-inventories",
+      "datetime_utc": "2026-05-06T18:30:00+00:00"
+    },
+    {
+      "title": "FOMC Member Goolsbee Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/889-us-fomc-member-goolsbee-speaks",
+      "datetime_utc": "2026-05-06T21:00:00+00:00"
+    },
+    {
+      "title": "BOC Gov Macklem Speaks",
+      "country": "CAD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/840-ca-boc-gov-macklem-speaks",
+      "datetime_utc": "2026-05-07T00:15:00+00:00"
+    },
+    {
+      "title": "RBNZ Gov Breman Speaks",
+      "country": "NZD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/927-nz-rbnz-gov-breman-speaks",
+      "datetime_utc": "2026-05-07T01:10:00+00:00"
+    },
+    {
+      "title": "Monetary Base y/y",
+      "country": "JPY",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/377-jn-monetary-base-yy",
+      "datetime_utc": "2026-05-07T03:50:00+00:00"
+    },
+    {
+      "title": "Monetary Policy Meeting Minutes",
+      "country": "JPY",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/306-jn-monetary-policy-meeting-minutes",
+      "datetime_utc": "2026-05-07T03:50:00+00:00"
+    },
+    {
+      "title": "Goods Trade Balance",
+      "country": "AUD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/122-au-goods-trade-balance",
+      "datetime_utc": "2026-05-07T05:30:00+00:00"
+    },
+    {
+      "title": "German Factory Orders m/m",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/352-ge-factory-orders-mm",
+      "datetime_utc": "2026-05-07T10:00:00+00:00"
+    },
+    {
+      "title": "French Trade Balance",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/126-fr-trade-balance",
+      "datetime_utc": "2026-05-07T10:45:00+00:00"
+    },
+    {
+      "title": "Foreign Currency Reserves",
+      "country": "CHF",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/517-sz-foreign-currency-reserves",
+      "datetime_utc": "2026-05-07T11:00:00+00:00"
+    },
+    {
+      "title": "Unemployment Rate",
+      "country": "CHF",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/62-sz-unemployment-rate",
+      "datetime_utc": "2026-05-07T11:00:00+00:00"
+    },
+    {
+      "title": "MPC Member Lombardelli Speaks",
+      "country": "GBP",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/908-uk-mpc-member-lombardelli-speaks",
+      "datetime_utc": "2026-05-07T12:00:00+00:00"
+    },
+    {
+      "title": "Construction PMI",
+      "country": "GBP",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/251-uk-construction-pmi",
+      "datetime_utc": "2026-05-07T12:30:00+00:00"
+    },
+    {
+      "title": "Spanish 10-y Bond Auction",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/525-sp-10-y-bond-auction",
+      "datetime_utc": "2026-05-07T12:46:00+00:00"
+    },
+    {
+      "title": "French 10-y Bond Auction",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/523-fr-10-y-bond-auction",
+      "datetime_utc": "2026-05-07T12:57:00+00:00"
+    },
+    {
+      "title": "Retail Sales m/m",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/106-ez-retail-sales-mm",
+      "datetime_utc": "2026-05-07T13:00:00+00:00"
+    },
+    {
+      "title": "Challenger Job Cuts y/y",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/76-us-challenger-job-cuts-yy",
+      "datetime_utc": "2026-05-07T13:30:00+00:00"
+    },
+    {
+      "title": "Unemployment Claims",
+      "country": "USD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/11-us-unemployment-claims",
+      "datetime_utc": "2026-05-07T16:30:00+00:00"
+    },
+    {
+      "title": "Prelim Nonfarm Productivity q/q",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/155-us-prelim-nonfarm-productivity-qq",
+      "datetime_utc": "2026-05-07T16:30:00+00:00"
+    },
+    {
+      "title": "Prelim Unit Labor Costs q/q",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/177-us-prelim-unit-labor-costs-qq",
+      "datetime_utc": "2026-05-07T16:30:00+00:00"
+    },
+    {
+      "title": "MPC Member Taylor Speaks",
+      "country": "GBP",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/916-uk-mpc-member-taylor-speaks",
+      "datetime_utc": "2026-05-07T16:40:00+00:00"
+    },
+    {
+      "title": "Construction Spending m/m",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/205-us-construction-spending-mm",
+      "datetime_utc": "2026-05-07T17:59:00+00:00"
+    },
+    {
+      "title": "Construction Spending m/m",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/205-us-construction-spending-mm",
+      "datetime_utc": "2026-05-07T18:00:00+00:00"
+    },
+    {
+      "title": "Natural Gas Storage",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/26-us-natural-gas-storage",
+      "datetime_utc": "2026-05-07T18:30:00+00:00"
+    },
+    {
+      "title": "FOMC Member Kashkari Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/651-us-fomc-member-kashkari-speaks",
+      "datetime_utc": "2026-05-07T21:00:00+00:00"
+    },
+    {
+      "title": "FOMC Member Hammack Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/913-us-fomc-member-hammack-speaks",
+      "datetime_utc": "2026-05-07T22:05:00+00:00"
+    },
+    {
+      "title": "Consumer Credit m/m",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/341-us-consumer-credit-mm",
+      "datetime_utc": "2026-05-07T23:00:00+00:00"
+    },
+    {
+      "title": "FOMC Member Williams Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/518-us-fomc-member-williams-speaks",
+      "datetime_utc": "2026-05-07T23:30:00+00:00"
+    },
+    {
+      "title": "Average Cash Earnings y/y",
+      "country": "JPY",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/181-jn-average-cash-earnings-yy",
+      "datetime_utc": "2026-05-08T03:30:00+00:00"
+    },
+    {
+      "title": "German Industrial Production m/m",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/221-ge-industrial-production-mm",
+      "datetime_utc": "2026-05-08T10:00:00+00:00"
+    },
+    {
+      "title": "German Trade Balance",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/125-ge-trade-balance",
+      "datetime_utc": "2026-05-08T10:00:00+00:00"
+    },
+    {
+      "title": "Halifax HPI m/m",
+      "country": "GBP",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/151-uk-halifax-hpi-mm",
+      "datetime_utc": "2026-05-08T10:00:00+00:00"
+    },
+    {
+      "title": "French Bank Holiday",
+      "country": "EUR",
+      "impact": "Holiday",
+      "url": "https://www.forexfactory.com/calendar/396-fr-bank-holiday",
+      "datetime_utc": "2026-05-08T10:01:00+00:00"
+    },
+    {
+      "title": "SECO Consumer Climate",
+      "country": "CHF",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/337-sz-seco-consumer-climate",
+      "datetime_utc": "2026-05-08T11:00:00+00:00"
+    },
+    {
+      "title": "ECB President Lagarde Speaks",
+      "country": "EUR",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/832-ez-ecb-president-lagarde-speaks",
+      "datetime_utc": "2026-05-08T11:00:00+00:00"
+    },
+    {
+      "title": "FOMC Member Cook Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/886-us-fomc-member-cook-speaks",
+      "datetime_utc": "2026-05-08T13:45:00+00:00"
+    },
+    {
+      "title": "BOE Gov Bailey Speaks",
+      "country": "GBP",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/838-uk-boe-gov-bailey-speaks",
+      "datetime_utc": "2026-05-08T16:20:00+00:00"
+    },
+    {
+      "title": "Employment Change",
+      "country": "CAD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/67-ca-employment-change",
+      "datetime_utc": "2026-05-08T16:30:00+00:00"
+    },
+    {
+      "title": "Unemployment Rate",
+      "country": "CAD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/57-ca-unemployment-rate",
+      "datetime_utc": "2026-05-08T16:30:00+00:00"
+    },
+    {
+      "title": "Average Hourly Earnings m/m",
+      "country": "USD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/159-us-average-hourly-earnings-mm",
+      "datetime_utc": "2026-05-08T16:30:00+00:00"
+    },
+    {
+      "title": "Non-Farm Employment Change",
+      "country": "USD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/66-us-non-farm-employment-change",
+      "datetime_utc": "2026-05-08T16:30:00+00:00"
+    },
+    {
+      "title": "Unemployment Rate",
+      "country": "USD",
+      "impact": "High",
+      "url": "https://www.forexfactory.com/calendar/56-us-unemployment-rate",
+      "datetime_utc": "2026-05-08T16:30:00+00:00"
+    },
+    {
+      "title": "Prelim UoM Consumer Sentiment",
+      "country": "USD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/53-us-prelim-uom-consumer-sentiment",
+      "datetime_utc": "2026-05-08T18:00:00+00:00"
+    },
+    {
+      "title": "Prelim UoM Inflation Expectations",
+      "country": "USD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/236-us-prelim-uom-inflation-expectations",
+      "datetime_utc": "2026-05-08T18:00:00+00:00"
+    },
+    {
+      "title": "Final Wholesale Inventories m/m",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/154-us-final-wholesale-inventories-mm",
+      "datetime_utc": "2026-05-08T18:00:00+00:00"
+    },
+    {
+      "title": "FOMC Member Goolsbee Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/889-us-fomc-member-goolsbee-speaks",
+      "datetime_utc": "2026-05-08T19:05:00+00:00"
+    },
+    {
+      "title": "President Trump Speaks",
+      "country": "USD",
+      "impact": "Medium",
+      "url": "https://www.forexfactory.com/calendar/645-us-president-trump-speaks",
+      "datetime_utc": "2026-05-08T20:00:00+00:00"
+    },
+    {
+      "title": "German Buba President Nagel Speaks",
+      "country": "EUR",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/851-ge-buba-president-nagel-speaks",
+      "datetime_utc": "2026-05-08T20:15:00+00:00"
+    },
+    {
+      "title": "FOMC Member Goolsbee Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/889-us-fomc-member-goolsbee-speaks",
+      "datetime_utc": "2026-05-08T22:20:00+00:00"
+    },
+    {
+      "title": "FOMC Financial Stability Report",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/843-us-fomc-financial-stability-report",
+      "datetime_utc": "2026-05-09T00:00:00+00:00"
+    },
+    {
+      "title": "FOMC Member Bowman Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/812-us-fomc-member-bowman-speaks",
+      "datetime_utc": "2026-05-09T03:30:00+00:00"
+    },
+    {
+      "title": "FOMC Member Daly Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/807-us-fomc-member-daly-speaks",
+      "datetime_utc": "2026-05-09T03:30:00+00:00"
+    },
+    {
+      "title": "FOMC Member Goolsbee Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/889-us-fomc-member-goolsbee-speaks",
+      "datetime_utc": "2026-05-09T03:30:00+00:00"
+    },
+    {
+      "title": "FOMC Member Waller Speaks",
+      "country": "USD",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/839-us-fomc-member-waller-speaks",
+      "datetime_utc": "2026-05-09T03:30:00+00:00"
+    },
+    {
+      "title": "USD-Denominated Trade Balance",
+      "country": "CNY",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/450-ch-usd-denominated-trade-balance",
+      "datetime_utc": "2026-05-09T06:42:00+00:00"
+    },
+    {
+      "title": "Trade Balance",
+      "country": "CNY",
+      "impact": "Low",
+      "url": "https://www.forexfactory.com/calendar/630-ch-trade-balance",
+      "datetime_utc": "2026-05-09T06:43:00+00:00"
+    }
+  ]
+}

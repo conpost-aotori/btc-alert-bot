@@ -1,0 +1,31 @@
+# Secrets
+.env
+.env.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Data / logs
+# state.json + macro_cache.json must be tracked so the GitHub Actions workflow
+# can persist them across runs (each runner is otherwise stateless).
+# Other data files stay ignored.
+data/*
+!data/.gitkeep
+!data/state.json
+!data/macro_cache.json
+*.log
+*.db
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+scripts/.codex_consult.md

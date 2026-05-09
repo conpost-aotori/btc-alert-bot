@@ -1,0 +1,57 @@
+name: BTC Alert Bot
+
+on:
+  schedule:
+    # Every 5 minutes. NOTE: GitHub Actions cron has variable delay (often 5-15min in practice).
+    - cron: "*/5 * * * *"
+  workflow_dispatch:  # Allow manual trigger from the Actions tab.
+
+permissions:
+  contents: write  # Required to commit data/state.json back.
+
+concurrency:
+  group: btc-alert
+  cancel-in-progress: false  # Never cancel a run mid-flight; let cooldown handle dupes.
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Run alert check
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          LOG_LEVEL: INFO
+          DRY_RUN: "false"
+          # Discord 専用運用中。X 投稿を再開するときに true へ。
+          ENABLE_X_POST: "false"
+        run: python -m btc_alert_bot.main
+
+      - name: Commit updated state (if any)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # state.json: changes every run (feature_history append).
+          # macro_cache.json: changes ~every 4h (TTL).
+          if [ -n "$(git status --porcelain data/state.json data/macro_cache.json)" ]; then
+            git add data/state.json data/macro_cache.json 2>/dev/null || true
+            git commit -m "chore: update alert state [skip ci]"
+            git push
+          else
+            echo "No state change — nothing to commit."
+          fi

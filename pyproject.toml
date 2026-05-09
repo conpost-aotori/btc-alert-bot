@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "btc-alert-bot"
+version = "0.1.0"
+description = "Polls BTC price every 5min and posts spike alerts with Gemini-summarized factors."
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "feedparser>=6.0",
+    "google-genai>=2.0",
+    "tweepy>=4.14",
+    "python-dotenv>=1.0",
+    "matplotlib>=3.8",
+    "mplfinance>=0.12.10b0",
+    "pandas>=2.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
