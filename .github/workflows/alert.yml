@@ -1,10 +1,12 @@
 name: BTC Alert Bot
 
 on:
-  schedule:
-    # Every 5 minutes. NOTE: GitHub Actions cron has variable delay (often 5-15min in practice).
-    - cron: "*/5 * * * *"
-  workflow_dispatch:  # Allow manual trigger from the Actions tab.
+  # The scheduled cron is INTENTIONALLY DISABLED — Phase 3 (WebSocket
+  # realtime mode) on Lightsail is the primary alert path now. Re-enable
+  # by un-commenting the schedule block if Phase 3 is taken down.
+  # schedule:
+  #   - cron: "*/5 * * * *"
+  workflow_dispatch:  # Manual-only trigger (testing / fallback drills).
 
 permissions:
   contents: write  # Required to commit data/state.json back.
