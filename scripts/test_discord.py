@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 from btc_alert_bot.analyzers import gather_factors
 from btc_alert_bot.chart import render_chart
 from btc_alert_bot.features import compute_market_features
-from btc_alert_bot.history import record_alert
+from btc_alert_bot.history import find_similar_alerts, record_alert
 from btc_alert_bot.market import fetch_market_snapshot
 from btc_alert_bot.price import fetch_btc_price
 from btc_alert_bot.publishers import post_discord
@@ -91,9 +91,17 @@ def main() -> int:
     for f in factors[:5]:
         log.info("  - [%s/%s] %s", f["type"], f["source"], f["title"][:80])
 
+    # 4a. Look up similar past alerts (Phase 2.5).
+    similar = find_similar_alerts(ROOT / "data" / "history.sqlite", spike, limit=3)
+    if similar:
+        log.info(
+            "Similar past alerts: %s",
+            ", ".join(f"#{s['id']}({s['change_pct']:+.2f}%)" for s in similar),
+        )
+
     # 4. Real Gemini summary.
     log.info("Calling Gemini...")
-    summary = summarize(price_data, spike, factors)
+    summary = summarize(price_data, spike, factors, similar_alerts=similar)
     log.info("Summary:\n%s", summary)
 
     # 5. Render chart PNG.

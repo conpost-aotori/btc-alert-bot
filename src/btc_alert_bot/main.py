@@ -26,7 +26,7 @@ from .detector import (
     save_state,
 )
 from .features import compute_market_features
-from .history import record_alert
+from .history import find_similar_alerts, record_alert
 from .market import fetch_market_snapshot
 from .price import fetch_btc_price
 from .publishers import post_discord, post_x
@@ -110,8 +110,16 @@ def main() -> int:
     factors = gather_factors(spike)
     log.info("Gathered %d candidate factors", len(factors))
 
+    # 6b. Look up similar past alerts (Phase 2.5).
+    similar = find_similar_alerts(HISTORY_DB_PATH, spike, limit=3)
+    if similar:
+        log.info(
+            "Similar past alerts: %s",
+            ", ".join(f"#{s['id']}({s['change_pct']:+.2f}%)" for s in similar),
+        )
+
     # 7. Generate Japanese summary via Gemini.
-    summary = summarize(price_data, spike, factors)
+    summary = summarize(price_data, spike, factors, similar_alerts=similar)
     log.info("Summary:\n%s", summary)
 
     # 8. Render chart PNG (optional — alert still goes out if rendering fails).

@@ -182,6 +182,112 @@ def list_recent_alerts(path: Path, limit: int = 20) -> list[dict]:
         return []
 
 
+# ---------------------------------------------------------------------------
+# Similarity search (Phase 2.5)
+# ---------------------------------------------------------------------------
+
+# Components of the similarity vector and the divisor each is normalized
+# by. The divisors are rough "typical max" values so distance comparisons
+# stay scale-invariant across components.
+_SIMILARITY_VECTOR = [
+    ("atr_pct",          0.5),
+    ("move_per_atr",     4.0),
+    ("oi_change_1h_pct", 5.0),
+    ("funding_rate",     0.001),
+]
+
+# How many past alerts (per direction) to consider before ranking.
+SIMILARITY_CANDIDATE_LIMIT = 200
+
+
+def _vectorize(features: dict | None) -> list[float] | None:
+    """Build a normalized feature vector. Returns None if too thin."""
+    if not features:
+        return None
+    vec: list[float] = []
+    for key, divisor in _SIMILARITY_VECTOR:
+        v = features.get(key)
+        try:
+            vec.append(float(v) / divisor if v is not None else 0.0)
+        except (TypeError, ValueError):
+            vec.append(0.0)
+    return vec
+
+
+def find_similar_alerts(
+    path: Path,
+    current_spike: dict,
+    limit: int = 3,
+) -> list[dict]:
+    """Find past alerts most similar to the current one (same direction).
+
+    Ranks candidates by Euclidean distance on a small normalized feature
+    vector. Returns up to ``limit`` alerts with their factors attached.
+    Designed to be a Gemini prompt enrichment, not a strict classifier —
+    so we never raise; missing data just yields fewer results.
+    """
+    if not path.exists():
+        return []
+
+    cur_features = current_spike.get("features") or {}
+    cur_vec = _vectorize(cur_features)
+    if cur_vec is None:
+        return []
+
+    direction = current_spike.get("direction")
+    try:
+        with _connect(path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT * FROM alerts
+                WHERE spike_direction = ?
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (direction, SIMILARITY_CANDIDATE_LIMIT),
+            ).fetchall()
+            candidates: list[tuple[float, dict]] = []
+            for r in rows:
+                try:
+                    past_features = json.loads(r["features_json"] or "{}")
+                except Exception:
+                    continue
+                past_vec = _vectorize(past_features)
+                if past_vec is None:
+                    continue
+                dist = sum(
+                    (a - b) ** 2 for a, b in zip(cur_vec, past_vec)
+                ) ** 0.5
+                candidates.append((dist, dict(r)))
+
+            candidates.sort(key=lambda x: x[0])
+            out: list[dict] = []
+            for dist, alert in candidates[:limit]:
+                factors = conn.execute(
+                    """
+                    SELECT type, source, title FROM factors
+                    WHERE alert_id = ? ORDER BY id
+                    """,
+                    (alert["id"],),
+                ).fetchall()
+                out.append({
+                    "id": alert["id"],
+                    "ts": alert["ts"],
+                    "direction": alert["spike_direction"],
+                    "change_pct": alert["spike_change_pct"],
+                    "window": alert["spike_window"],
+                    "score": alert.get("spike_score"),
+                    "summary": alert.get("summary"),
+                    "distance": dist,
+                    "factors": [dict(f) for f in factors],
+                })
+            return out
+    except Exception as e:
+        log.warning("Similarity search failed: %s", e)
+        return []
+
+
 def get_alert(path: Path, alert_id: int) -> dict | None:
     """Return one alert with its factors attached as ``factors`` list."""
     if not path.exists():
