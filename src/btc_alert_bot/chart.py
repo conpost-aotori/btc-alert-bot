@@ -38,17 +38,22 @@ _CJK_FONT_CANDIDATES = [
     "/Library/Fonts/Hiragino Sans W3.ttc",                      # macOS
     "C:/Windows/Fonts/YuGothR.ttc",                              # Windows
 ]
+_CJK_FONT_PATH: str | None = None
 for _candidate in _CJK_FONT_CANDIDATES:
     if os.path.exists(_candidate):
         try:
             _fm.fontManager.addfont(_candidate)
+            _CJK_FONT_PATH = _candidate
+            break
         except Exception:
             pass
 
-plt.rcParams["font.family"] = [
-    "Noto Sans CJK JP", "Hiragino Sans", "Yu Gothic",
-    "DejaVu Sans", "sans-serif",
-]
+# An explicit FontProperties bypasses mpf style overrides — we use this
+# whenever we draw text that may contain CJK glyphs.
+_CJK_FONT_PROPS = (
+    _fm.FontProperties(fname=_CJK_FONT_PATH) if _CJK_FONT_PATH else None
+)
+
 plt.rcParams["axes.unicode_minus"] = False
 
 log = logging.getLogger(__name__)
@@ -142,13 +147,15 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
         ha="left", fontsize=8, color="gray", alpha=0.6,
     )
     # Footer right: creator credit. Italics + low alpha so it's
-    # visible-but-unobtrusive on the dark theme.
-    fig.text(
-        0.99, 0.005,
-        "Crafted by 仮想NISHI · @Nishi8maru",
-        ha="right", fontsize=8, color="lightgray", alpha=0.55,
-        style="italic",
+    # visible-but-unobtrusive on the dark theme. fontproperties is set
+    # explicitly so the CJK characters in 仮想NISHI render via Noto CJK
+    # rather than tofu-boxing through mpf's default font.
+    credit_kwargs = dict(
+        ha="right", fontsize=8, color="lightgray", alpha=0.55, style="italic",
     )
+    if _CJK_FONT_PROPS is not None:
+        credit_kwargs["fontproperties"] = _CJK_FONT_PROPS
+    fig.text(0.99, 0.005, "Crafted by 仮想NISHI · @Nishi8maru", **credit_kwargs)
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=120, facecolor=fig.get_facecolor())
