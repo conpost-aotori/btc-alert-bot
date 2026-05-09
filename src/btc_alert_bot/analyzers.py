@@ -16,6 +16,8 @@ from zoneinfo import ZoneInfo
 import feedparser
 import requests
 
+from .deribit import fetch_options_factor
+
 log = logging.getLogger(__name__)
 
 # Fast English news (CoinPost is intentionally excluded — too slow / translated).
@@ -43,6 +45,10 @@ BYBIT_FUNDING_URL = "https://api.bybit.com/v5/market/funding/history"
 
 # Look back this many minutes when scanning RSS for relevant items.
 NEWS_LOOKBACK_MIN = 90
+
+# Hard wall-time budget for gather_factors() so a single slow source can't
+# block the whole alert pipeline. Stragglers are logged and dropped.
+GATHER_FACTORS_DEADLINE_S = 30.0
 
 # Surrounding window for matching macro events to the spike.
 MACRO_WINDOW_HOURS = 2
@@ -285,27 +291,49 @@ def fetch_macro() -> list[dict]:
 
 
 def gather_factors(spike: dict) -> list[dict]:  # noqa: ARG001 (spike reserved for future scoring)
-    """Run all analyzers in parallel and return ranked candidate factors."""
+    """Run all analyzers in parallel and return ranked candidate factors.
+
+    A hard deadline (GATHER_FACTORS_DEADLINE_S) bounds total wall time —
+    any analyzer that misses the deadline is dropped from this alert and
+    will be retried on the next cron tick.
+    """
     fetchers = [
         fetch_news,
         fetch_exchange_announcements,
         fetch_derivatives,
         fetch_macro,
+        fetch_options_factor,  # Deribit IV / term structure / skew / RV
     ]
     results: list[dict] = []
     with ThreadPoolExecutor(max_workers=len(fetchers)) as ex:
         futures = {ex.submit(f): f.__name__ for f in fetchers}
-        for fut in as_completed(futures):
-            name = futures[fut]
-            try:
-                results.extend(fut.result())
-            except Exception as e:
-                log.warning("Analyzer %s crashed: %s", name, e)
+        try:
+            for fut in as_completed(futures, timeout=GATHER_FACTORS_DEADLINE_S):
+                name = futures[fut]
+                try:
+                    results.extend(fut.result())
+                except Exception as e:
+                    log.warning("Analyzer %s crashed: %s", name, e)
+        except TimeoutError:
+            stragglers = [n for f, n in futures.items() if not f.done()]
+            log.warning(
+                "gather_factors deadline %.0fs exceeded; dropping: %s",
+                GATHER_FACTORS_DEADLINE_S, ", ".join(stragglers),
+            )
+            for f in futures:
+                f.cancel()
 
-    # Priority: macro confirmed events > exchange-official > general media > derivatives context.
-    type_priority = {"macro": 0, "exchange": 1, "news": 2, "derivatives": 3}
+    # Priority: confirmed macro events > exchange-official > general media >
+    # derivatives spot context > options-market positioning.
+    type_priority = {
+        "macro": 0,
+        "exchange": 1,
+        "news": 2,
+        "derivatives": 3,
+        "options": 4,
+    }
     results.sort(key=lambda x: type_priority.get(x["type"], 9))
-    return results[:8]
+    return results[:10]
 
 
 def _is_btc_relevant(title: str) -> bool:
