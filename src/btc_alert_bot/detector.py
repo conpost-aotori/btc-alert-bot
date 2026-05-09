@@ -51,10 +51,11 @@ FIRE_VOL_Z_MIN = 1.5
 # 5m is the most responsive composite path — moves that complete in 5min get
 # their own window so a single sustained 15min run only triggers one alert,
 # not two cascading ones (5m → 15m).
-# 15m is intentionally tightened so the same move doesn't fire twice (5m
-# alert, then a 15m alert 10 minutes later for the same trend).
+# 15m is intentionally tightened (1.8% base, adaptive 0.9-3.6%) so a
+# routine drift doesn't escalate to a "15m" alert just because the trend
+# stayed in one direction for a full quarter-hour.
 FIRE_RETURN_5M_MIN_PCT = 0.5
-FIRE_RETURN_15M_MIN_PCT = 1.2
+FIRE_RETURN_15M_MIN_PCT = 1.8
 
 # Adaptive reference. ``features["atr_pct"]`` is already per-5-min-bar ATR
 # regardless of which return horizon we're testing, so both 5m and 15m
@@ -67,14 +68,27 @@ ADAPTIVE_REF_ATR_PCT_5M = 0.10
 ADAPTIVE_REF_ATR_PCT_15M = 0.10
 
 # "Always alert" overrides — catch obvious moves even with thin history.
+# Each hard floor sits ABOVE the corresponding composite-gate base so a
+# threshold-only path can't quietly bypass the composite tightening.
 # 24h was removed at the user's request (no need to alert on multi-day moves).
 HARD_FALLBACK_RETURN_5M_PCT = 1.0
-HARD_FALLBACK_RETURN_15M_PCT = 1.5
+HARD_FALLBACK_RETURN_15M_PCT = 2.0  # raised from 1.5 to sit above the
+                                     # 1.8 composite base — without this
+                                     # a 1.6% drift would still fire a
+                                     # 15m alert via the hard floor.
 HARD_FALLBACK_RETURN_1H_PCT = 2.5
 
 # Cooldown: same direction is suppressed longer than a reversal.
-COOLDOWN_SAME_DIR_MIN = 90
+# Per-tier durations let the medium tier (15m) stay quieter than the
+# responsive short tier (1m/3m/5m) — the user reported 15m firing back-to-
+# back on the same sustained trend, so medium gets a 3-hour cooldown.
+COOLDOWN_SAME_DIR_MIN = 90  # default fallback
 COOLDOWN_OPP_DIR_MIN = 30
+COOLDOWN_BY_TIER_MIN: dict[str, int] = {
+    "short": 90,
+    "medium": 180,  # 3 hours — discourage 15m back-to-back on same trend
+    "long": 90,
+}
 
 # ---------------------------------------------------------------------------
 # Timeframe tiers — controls how alerts of different windows suppress each
@@ -468,16 +482,19 @@ class SpikeDetector:
         except Exception:
             return False
 
+        same_dir_cooldown = COOLDOWN_BY_TIER_MIN.get(
+            spike_tier, COOLDOWN_SAME_DIR_MIN
+        )
+
         # 1) Same-tier cooldown.
         same_tier_last = self._last_tier_alert(spike_tier)
         if same_tier_last:
             ts, last_dir = same_tier_last
             elapsed = (now - ts).total_seconds() / 60
-            if last_dir == direction and elapsed < COOLDOWN_SAME_DIR_MIN:
+            if last_dir == direction and elapsed < same_dir_cooldown:
                 log.info(
                     "Suppressed: %s tier same-direction cooldown "
-                    "(%.1f / %d min)", spike_tier, elapsed,
-                    COOLDOWN_SAME_DIR_MIN,
+                    "(%.1f / %d min)", spike_tier, elapsed, same_dir_cooldown,
                 )
                 return True
             if last_dir != direction and elapsed < COOLDOWN_OPP_DIR_MIN:
@@ -487,13 +504,16 @@ class SpikeDetector:
                 )
                 return True
 
-        # 2) Cross-tier: medium suppressed by recent short-tier alert.
+        # 2) Cross-tier: medium suppressed by recent short-tier alert
+        #    same-direction within the medium-tier window. This prevents
+        #    a 15m alert from re-firing the same trend that already fired
+        #    on a 5m bar earlier.
         if spike_tier == "medium":
             short_last = self._last_tier_alert("short")
             if short_last:
                 ts, last_dir = short_last
                 elapsed = (now - ts).total_seconds() / 60
-                if last_dir == direction and elapsed < COOLDOWN_SAME_DIR_MIN:
+                if last_dir == direction and elapsed < same_dir_cooldown:
                     log.info(
                         "Suppressed: medium-tier alert preempted by "
                         "short-tier alert %.1f min ago", elapsed,

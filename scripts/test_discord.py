@@ -69,8 +69,10 @@ def main() -> int:
         forced_change = 2.5
     else:
         forced_change = real_change
+    # Use a short-tier window so test runs don't appear as "15m" alerts
+    # in the production Discord (15m is intentionally rare per spec).
     spike = {
-        "window": "15m",
+        "window": "5m",
         "change": forced_change,
         "direction": "up" if forced_change > 0 else "down",
         "score": 3.1,
