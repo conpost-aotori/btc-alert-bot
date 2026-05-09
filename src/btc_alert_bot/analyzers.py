@@ -18,6 +18,7 @@ import requests
 
 from .deribit import fetch_options_factor
 from .fred import fetch_macro_background
+from .x_monitor import fetch_x_monitor
 
 log = logging.getLogger(__name__)
 
@@ -305,6 +306,7 @@ def gather_factors(spike: dict) -> list[dict]:  # noqa: ARG001 (spike reserved f
         fetch_macro,
         fetch_options_factor,    # Deribit IV / term structure / skew / RV
         fetch_macro_background,  # FRED daily DXY/yields/VIX/FedFunds
+        fetch_x_monitor,         # Nitter RSS for high-signal X accounts
     ]
     results: list[dict] = []
     with ThreadPoolExecutor(max_workers=len(fetchers)) as ex:
@@ -325,16 +327,18 @@ def gather_factors(spike: dict) -> list[dict]:  # noqa: ARG001 (spike reserved f
             for f in futures:
                 f.cancel()
 
-    # Priority order: imminent confirmed events > exchange announcements >
+    # Priority order: imminent confirmed events > X (high-signal accounts
+    # often beat media on breaking news) > exchange announcements >
     # general media > spot derivatives > options positioning > FRED daily
-    # background. The summarizer is told to weight in this order.
+    # background.
     type_priority = {
         "macro": 0,
-        "exchange": 1,
-        "news": 2,
-        "derivatives": 3,
-        "options": 4,
-        "macro_background": 5,
+        "x_monitor": 1,
+        "exchange": 2,
+        "news": 3,
+        "derivatives": 4,
+        "options": 5,
+        "macro_background": 6,
     }
     results.sort(key=lambda x: type_priority.get(x["type"], 9))
     return results[:10]
