@@ -30,7 +30,7 @@ def post_discord(
 
     color = 0x00C853 if spike["direction"] == "up" else 0xD32F2F
     embed = {
-        "title": f"🚨 BTC急変アラート ({spike['change']:+.2f}% / {spike['window']})",
+        "title": f"🚨 BTC緊急価格変動速報 ({spike['change']:+.2f}% / {spike['window']})",
         "description": summary,
         "color": color,
         "fields": [
