@@ -105,11 +105,15 @@ def compute_returns_pct(closes: list[float], lag_bars: int) -> float:
 # Headline features
 # ---------------------------------------------------------------------------
 
-def compute_market_features(snapshot: dict) -> dict:
+def compute_market_features(snapshot: dict, state: dict | None = None) -> dict:
     """Extract the headline features detector.py compares against history.
 
     Returned dict is JSON-serializable so it can be appended to the state
     ring buffer for future z-score calculations.
+
+    OI change-rate is derived from the rolling feature history (passed via
+    ``state``) rather than a snapshot field, because OKX's public API does
+    not expose a clean per-contract OI history endpoint.
     """
     klines = snapshot["klines_5m"]
     if len(klines) < ATR_PERIOD + 5:
@@ -143,23 +147,23 @@ def compute_market_features(snapshot: dict) -> dict:
     )
 
     # Volume features (last bar + 5-bar window).
-    volumes = [c["volume"] for c in confirmed]
     vol_now = klines[-1]["volume"]
     vol_5bar = sum(c["volume"] for c in klines[-5:])
 
-    # OI: latest minus 1h ago (12 5-min bars).
-    oi_now = oi_1h_ago = 0.0
+    # --- OI now from snapshot ticker, OI 1h ago from feature_history -----
+    ticker = snapshot.get("ticker", {})
+    oi_now = float(ticker.get("open_interest_btc", 0.0))
+
+    # 1h-ago OI: walk back through state.feature_history to find a snapshot
+    # whose OI was captured ~12 bars earlier (with tolerance).
     oi_change_pct = 0.0
-    oi_history = snapshot.get("oi_history", [])
-    if len(oi_history) >= 13:
-        oi_now = oi_history[-1]["oi"]
-        oi_1h_ago = oi_history[-13]["oi"]
-        if oi_1h_ago > 0:
+    history = (state or {}).get("feature_history", []) or []
+    if oi_now > 0 and len(history) >= 12:
+        oi_1h_ago = _find_oi_one_hour_ago(history)
+        if oi_1h_ago and oi_1h_ago > 0:
             oi_change_pct = (oi_now - oi_1h_ago) / oi_1h_ago * 100
 
-    # Funding (current rate from ticker).
-    ticker = snapshot.get("ticker", {})
-    funding_rate = ticker.get("funding_rate", 0.0)
+    funding_rate = float(ticker.get("funding_rate", 0.0))
 
     return {
         "ts": klines[-1]["ts"].isoformat(),
@@ -176,6 +180,38 @@ def compute_market_features(snapshot: dict) -> dict:
         "oi_change_1h_pct": oi_change_pct,
         "funding_rate": funding_rate,
     }
+
+
+def _find_oi_one_hour_ago(history: list[dict]) -> float | None:
+    """Walk back through feature_history to find OI roughly 60 minutes ago.
+
+    With a 5min cron, 12 entries back is the natural choice; we accept any
+    entry whose timestamp is between 50 and 75 minutes old to tolerate
+    GitHub Actions' variable cron delay.
+    """
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    target_min = (now - timedelta(minutes=60))
+    earliest_ok = now - timedelta(minutes=75)
+    latest_ok = now - timedelta(minutes=50)
+    best: tuple[float, float] | None = None  # (abs_offset, oi)
+    for h in history:
+        ts_s = h.get("ts")
+        if not ts_s:
+            continue
+        try:
+            ts = datetime.fromisoformat(ts_s)
+        except Exception:
+            continue
+        if not (earliest_ok <= ts <= latest_ok):
+            continue
+        offset = abs((ts - target_min).total_seconds())
+        oi_val = float(h.get("oi_now", 0.0) or 0.0)
+        if oi_val <= 0:
+            continue
+        if best is None or offset < best[0]:
+            best = (offset, oi_val)
+    return best[1] if best else None
 
 
 # ---------------------------------------------------------------------------

@@ -1,14 +1,15 @@
-"""Bybit public market data fetchers.
+"""OKX public market data fetchers.
 
-All endpoints are unauthenticated and free. We deliberately consolidate the
-calls here so feature engineering (features.py) and detection (detector.py)
-have a single, mockable interface.
+We deliberately use OKX rather than Bybit because Bybit returns HTTP 403
+to data-center IP ranges (where GitHub Actions runs), while OKX is
+CI-friendly. The data we need (BTC-USDT-SWAP perpetual: OHLC, OI,
+funding) is equivalent on both exchanges.
 
 Endpoints used:
-- /v5/market/kline           OHLCV candles (5min, 15min)
-- /v5/market/tickers         Latest price, 24h volume, OI, funding rate
-- /v5/market/open-interest   OI history (5min interval)
-- /v5/market/funding/history Recent funding rate history
+- /api/v5/market/candles         OHLCV candles
+- /api/v5/market/ticker          Latest price + 24h vol
+- /api/v5/public/open-interest   Current OI snapshot
+- /api/v5/public/funding-rate-history  Recent funding history
 """
 from __future__ import annotations
 
@@ -19,137 +20,137 @@ import requests
 
 log = logging.getLogger(__name__)
 
-BYBIT_BASE = "https://api.bybit.com"
-SYMBOL = "BTCUSDT"
-CATEGORY = "linear"  # USDT-margined perpetual
+OKX_BASE = "https://www.okx.com"
+INST_ID = "BTC-USDT-SWAP"          # USDT-margined linear perpetual
+INST_TYPE = "SWAP"
 
-# A single requests.Session pools TLS — small wins matter on cold CI runners.
 _session = requests.Session()
 _session.headers.update({"User-Agent": "btc-alert-bot/0.1"})
 
 
-def _get(path: str, params: dict, timeout: int = 15) -> dict:
-    resp = _session.get(f"{BYBIT_BASE}{path}", params=params, timeout=timeout)
+def _get(path: str, params: dict, timeout: int = 15) -> list:
+    resp = _session.get(f"{OKX_BASE}{path}", params=params, timeout=timeout)
     resp.raise_for_status()
     payload = resp.json()
-    if payload.get("retCode") not in (0, None):
-        raise RuntimeError(f"Bybit error: {payload.get('retMsg')} ({payload})")
-    return payload.get("result", {})
+    code = payload.get("code")
+    # OKX returns "0" on success.
+    if code not in ("0", 0, None):
+        raise RuntimeError(f"OKX error: code={code} msg={payload.get('msg')}")
+    return payload.get("data", [])
 
 
 # ---------------------------------------------------------------------------
 # Klines
 # ---------------------------------------------------------------------------
 
-def fetch_klines(interval: str = "5", limit: int = 200) -> list[dict]:
-    """Fetch BTCUSDT OHLCV candles, oldest-first.
+# OKX bar codes: "1m","3m","5m","15m","30m","1H","2H","4H","6H","12H","1D"...
+def fetch_klines(bar: str = "5m", limit: int = 200) -> list[dict]:
+    """Fetch BTC-USDT-SWAP OHLCV candles, oldest-first.
 
-    interval: "1","3","5","15","30","60","120","240","360","720","D","W","M"
-    limit:    max 1000 (Bybit cap)
-
-    The most recent candle is *unconfirmed* (in progress). Callers that need
-    closed candles should drop the last element.
+    OKX returns newest-first; we reverse for chronological order. The latest
+    bar may be unconfirmed — the 9th element ("confirm") is "1" when closed.
     """
-    result = _get(
-        "/v5/market/kline",
-        {"category": CATEGORY, "symbol": SYMBOL, "interval": interval, "limit": limit},
+    rows = _get(
+        "/api/v5/market/candles",
+        {"instId": INST_ID, "bar": bar, "limit": str(limit)},
     )
-    raw = result.get("list", [])
-    raw.reverse()  # newest-first → chronological
-    return [
-        {
-            "ts": datetime.fromtimestamp(int(c[0]) / 1000, tz=timezone.utc),
-            "open": float(c[1]),
-            "high": float(c[2]),
-            "low": float(c[3]),
-            "close": float(c[4]),
-            "volume": float(c[5]),
-            "turnover": float(c[6]),
-        }
-        for c in raw
-    ]
+    rows.reverse()
+    out: list[dict] = []
+    for r in rows:
+        # Schema: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+        out.append({
+            "ts": datetime.fromtimestamp(int(r[0]) / 1000, tz=timezone.utc),
+            "open": float(r[1]),
+            "high": float(r[2]),
+            "low": float(r[3]),
+            "close": float(r[4]),
+            "volume": float(r[5]),       # in BTC contracts
+            "turnover": float(r[6]),     # in BTC
+            "confirmed": r[8] == "1" if len(r) > 8 else True,
+        })
+    return out
 
 
 # ---------------------------------------------------------------------------
-# Ticker (live snapshot)
+# Ticker
 # ---------------------------------------------------------------------------
 
 def fetch_ticker() -> dict:
-    """Latest BTCUSDT perp snapshot: price, 24h volume, OI, funding rate."""
-    result = _get(
-        "/v5/market/tickers", {"category": CATEGORY, "symbol": SYMBOL}
-    )
-    rows = result.get("list", [])
+    """Latest BTC-USDT-SWAP snapshot: price + 24h volume range."""
+    rows = _get("/api/v5/market/ticker", {"instId": INST_ID})
     if not rows:
-        raise RuntimeError("Bybit ticker returned empty list")
+        raise RuntimeError("OKX ticker returned empty list")
     t = rows[0]
-    # Bybit returns numeric values as strings — cast carefully.
+    last = float(t["last"])
+    open24 = float(t.get("open24h", last))
+    pct_24h = ((last / open24 - 1) * 100) if open24 > 0 else 0.0
     return {
         "ts": datetime.now(timezone.utc),
-        "last_price": float(t["lastPrice"]),
-        "mark_price": float(t.get("markPrice", t["lastPrice"])),
-        "index_price": float(t.get("indexPrice", t["lastPrice"])),
-        "price_change_pct_24h": float(t.get("price24hPcnt", 0.0)) * 100,
-        "high_24h": float(t["highPrice24h"]),
-        "low_24h": float(t["lowPrice24h"]),
-        "volume_24h": float(t["volume24h"]),       # in BTC
-        "turnover_24h": float(t["turnover24h"]),    # in USDT
-        "open_interest_btc": float(t.get("openInterest", 0.0)),
-        "open_interest_usd": float(t.get("openInterestValue", 0.0)),
-        "funding_rate": float(t.get("fundingRate", 0.0)),       # decimal, e.g. 0.0001
-        "funding_next_ts": int(t.get("nextFundingTime", 0)),    # ms
+        "last_price": last,
+        "open_24h": open24,
+        "high_24h": float(t["high24h"]),
+        "low_24h": float(t["low24h"]),
+        "volume_24h": float(t.get("vol24h", 0.0)),       # in contracts
+        "turnover_24h": float(t.get("volCcy24h", 0.0)),  # in BTC
+        "price_change_pct_24h": pct_24h,
     }
 
 
 # ---------------------------------------------------------------------------
-# Open Interest history
+# Open Interest (current snapshot — history is derived from feature_history)
 # ---------------------------------------------------------------------------
 
-def fetch_open_interest(interval_time: str = "5min", limit: int = 200) -> list[dict]:
-    """OI history, oldest-first.
+def fetch_open_interest() -> dict | None:
+    """Current OI snapshot.
 
-    interval_time: "5min","15min","30min","1h","4h","1d"
-    Useful for detecting OI drops that often coincide with cascade liquidations.
+    OKX's free public OI history endpoint requires an ``instFamily`` filter
+    that doesn't return a clean per-contract series, so we fetch only the
+    current value here. The detector compares it against historical OI
+    snapshots stored in state.feature_history.
     """
-    result = _get(
-        "/v5/market/open-interest",
-        {
-            "category": CATEGORY,
-            "symbol": SYMBOL,
-            "intervalTime": interval_time,
-            "limit": limit,
-        },
+    rows = _get(
+        "/api/v5/public/open-interest",
+        {"instType": INST_TYPE, "instId": INST_ID},
     )
-    raw = result.get("list", [])
-    raw.reverse()
-    return [
-        {
-            "ts": datetime.fromtimestamp(int(r["timestamp"]) / 1000, tz=timezone.utc),
-            "oi": float(r["openInterest"]),
-        }
-        for r in raw
-    ]
+    if not rows:
+        return None
+    r = rows[0]
+    return {
+        "ts": datetime.fromtimestamp(int(r["ts"]) / 1000, tz=timezone.utc),
+        "oi_contracts": float(r.get("oi", 0.0)),
+        "oi_btc": float(r.get("oiCcy", 0.0)),
+        "oi_usd": float(r.get("oiUsd", 0.0)) if r.get("oiUsd") else 0.0,
+    }
 
 
 # ---------------------------------------------------------------------------
 # Funding rate history
 # ---------------------------------------------------------------------------
 
-def fetch_funding_history(limit: int = 60) -> list[dict]:
-    """Funding rate history, oldest-first. Bybit pays every 8h, so 60 ≈ 20 days."""
-    result = _get(
-        "/v5/market/funding/history",
-        {"category": CATEGORY, "symbol": SYMBOL, "limit": limit},
+def fetch_funding_history(limit: int = 30) -> list[dict]:
+    """Funding rate history, oldest-first. OKX pays every 8h."""
+    rows = _get(
+        "/api/v5/public/funding-rate-history",
+        {"instId": INST_ID, "limit": str(limit)},
     )
-    raw = result.get("list", [])
-    raw.reverse()
+    rows.reverse()
     return [
         {
-            "ts": datetime.fromtimestamp(int(r["fundingRateTimestamp"]) / 1000, tz=timezone.utc),
+            "ts": datetime.fromtimestamp(int(r["fundingTime"]) / 1000, tz=timezone.utc),
             "rate": float(r["fundingRate"]),
         }
-        for r in raw
+        for r in rows
     ]
+
+
+def fetch_current_funding() -> float:
+    """Latest funding rate (also exposed in funding history's last item)."""
+    rows = _get(
+        "/api/v5/public/funding-rate", {"instId": INST_ID}
+    )
+    if not rows:
+        return 0.0
+    return float(rows[0].get("fundingRate", 0.0))
 
 
 # ---------------------------------------------------------------------------
@@ -162,14 +163,24 @@ def fetch_market_snapshot() -> dict:
     Network failures bubble up; main.py decides whether to fall back to the
     simpler CoinGecko-only path.
     """
-    # 5min klines: 200 bars = ~16h of context (enough for 14-period ATR with room).
-    klines_5m = fetch_klines(interval="5", limit=200)
+    klines_5m = fetch_klines(bar="5m", limit=200)
     ticker = fetch_ticker()
-    oi_history = fetch_open_interest(interval_time="5min", limit=72)  # 6h
-    funding_history = fetch_funding_history(limit=30)                  # ~10 days
+    oi = fetch_open_interest() or {}
+    funding_history = fetch_funding_history(limit=30)
+    current_funding = fetch_current_funding()
+
+    # Surface a flat dict shape compatible with the existing features.py.
     return {
         "klines_5m": klines_5m,
-        "ticker": ticker,
-        "oi_history": oi_history,
+        "ticker": {
+            **ticker,
+            "open_interest_btc": oi.get("oi_btc", 0.0),
+            "open_interest_usd": oi.get("oi_usd", 0.0),
+            "funding_rate": current_funding,
+        },
+        # OI history is now derived from state.feature_history; we keep this
+        # field empty for backwards compat with features.py which falls back
+        # to history lookup when this is short.
+        "oi_history": [],
         "funding_history": funding_history,
     }

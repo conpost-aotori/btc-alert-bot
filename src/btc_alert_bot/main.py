@@ -58,11 +58,14 @@ def main() -> int:
         )
     )
 
-    # 2. Bybit market snapshot + feature engineering.
+    # 2. Load state first — features.py needs it for OI history lookup.
+    state = load_state(STATE_PATH)
+
+    # 3. OKX market snapshot + feature engineering.
     features: dict = {}
     try:
         snapshot = fetch_market_snapshot()
-        features = compute_market_features(snapshot)
+        features = compute_market_features(snapshot, state=state)
         if features:
             log.info(
                 "Features: ATR%%=%.3f, ret15m=%+.2f%%, move/ATR=%.2f, "
@@ -73,15 +76,14 @@ def main() -> int:
             )
     except Exception as e:
         log.warning(
-            "Bybit market fetch failed: %s — falling back to CoinGecko-only detection",
+            "OKX market fetch failed: %s — falling back to CoinGecko-only detection",
             e,
         )
 
-    # 3. Load state, append features to ring buffer (always — for z-score history).
-    state = load_state(STATE_PATH)
+    # 4. Append features to ring buffer (always — for z-score history).
     append_feature_history(state, features)
 
-    # 4. Spike detection (composite if features available, else legacy).
+    # 5. Spike detection (composite if features available, else legacy).
     detector = SpikeDetector(state)
     if features:
         spike = detector.check_composite(price_data, features)
@@ -102,15 +104,15 @@ def main() -> int:
     for r in spike.get("reasons") or []:
         log.info("  reason: %s", r)
 
-    # 5. Parallel factor analysis.
+    # 6. Parallel factor analysis.
     factors = gather_factors(spike)
     log.info("Gathered %d candidate factors", len(factors))
 
-    # 6. Generate Japanese summary via Gemini.
+    # 7. Generate Japanese summary via Gemini.
     summary = summarize(price_data, spike, factors)
     log.info("Summary:\n%s", summary)
 
-    # 7. Render chart PNG (optional — alert still goes out if rendering fails).
+    # 8. Render chart PNG (optional — alert still goes out if rendering fails).
     chart_png: bytes | None = None
     try:
         chart_png = render_chart(spike, price_data)
@@ -118,7 +120,7 @@ def main() -> int:
     except Exception as e:
         log.warning("Chart render failed: %s — posting text only", e)
 
-    # 8. Publish (or dry-run preview).
+    # 9. Publish (or dry-run preview).
     dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
     enable_x = os.getenv("ENABLE_X_POST", "false").lower() == "true"
     delivered = False
@@ -134,7 +136,7 @@ def main() -> int:
         else:
             log.info("X posting disabled (set ENABLE_X_POST=true to enable)")
 
-    # 9. Persist state — cooldown fields only updated if delivery succeeded,
+    # 10. Persist state — cooldown fields only updated if delivery succeeded,
     #    but feature_history (already appended to `state`) is always saved.
     if delivered:
         state.update({
