@@ -109,11 +109,19 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
         returnfig=True,
     )
 
-    # Footer with source attribution.
+    # Footer left: source attribution (subtle).
+    fig.text(
+        0.01, 0.005,
+        f"Source: OKX (UTC) — {limit} × {bar} candles",
+        ha="left", fontsize=8, color="gray", alpha=0.6,
+    )
+    # Footer right: creator credit. Italics + low alpha so it's
+    # visible-but-unobtrusive on the dark theme.
     fig.text(
         0.99, 0.005,
-        f"Source: OKX (UTC) — {limit} × {bar} candles",
-        ha="right", fontsize=8, color="gray", alpha=0.7,
+        "Crafted by 仮想NISHI · @Nishi8maru",
+        ha="right", fontsize=8, color="lightgray", alpha=0.55,
+        style="italic",
     )
 
     buf = io.BytesIO()
