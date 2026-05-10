@@ -53,6 +53,31 @@ def x_truncate_to_weight(s: str, budget: int) -> str:
     return "".join(out) + "…"
 
 
+# ---------------------------------------------------------------------------
+# Unicode Mathematical Sans-Serif Bold for ASCII letters/digits — the only
+# practical "bold" available on X (no markdown). Japanese / CJK characters
+# pass through unchanged because Unicode has no standard bold variant for
+# them. Used for the X tweet header so e.g. "BTC" stands out visually.
+# ---------------------------------------------------------------------------
+
+def _to_bold_ascii(s: str) -> str:
+    """Convert ASCII A-Z / a-z / 0-9 to their Mathematical Sans-Serif Bold
+    Unicode codepoints. Other characters (incl. Japanese) pass through.
+    """
+    out: list[str] = []
+    for c in s:
+        cp = ord(c)
+        if 0x41 <= cp <= 0x5A:        # A-Z
+            out.append(chr(0x1D5D4 + (cp - 0x41)))
+        elif 0x61 <= cp <= 0x7A:      # a-z
+            out.append(chr(0x1D5EE + (cp - 0x61)))
+        elif 0x30 <= cp <= 0x39:      # 0-9
+            out.append(chr(0x1D7EC + (cp - 0x30)))
+        else:
+            out.append(c)
+    return "".join(out)
+
+
 def post_discord(
     summary: str,
     price_data: dict,
@@ -120,7 +145,10 @@ def post_discord(
         ])
 
     embed = {
-        "title": f"🚨 BTC緊急価格変動速報 ({spike['change']:+.2f}% / {window})",
+        # Title intentionally drops the (change / window) suffix — the
+        # Gemini summary's first line already includes that info, so the
+        # parens were duplicating data.
+        "title": "🚨 BTC緊急価格変動速報",
         # Leading blank line gives the title visual breathing room before
         # the Gemini summary kicks in.
         "description": f"\n{summary}",
@@ -181,10 +209,11 @@ def post_x(
 
     # Build tweet text: alert header + summary + hashtags.
     # Mirrors the Discord embed title for consistency.
-    header = (
-        f"🚨 BTC緊急価格変動速報 "
-        f"({spike['change']:+.2f}% / {spike['window']})"
-    )
+    # - Drops the (change / window) suffix — same data is in the summary
+    #   first line, so the parens were redundant.
+    # - Wraps ASCII chars in Mathematical Sans-Serif Bold so "BTC" stands
+    #   out on a platform with no markdown. Japanese chars stay regular.
+    header = "🚨 " + _to_bold_ascii("BTC") + "緊急価格変動速報"
     hashtags = "#BTC #Bitcoin #暗号資産"
     # Twitter weights CJK chars at 2 each — `len()` would undercount and
     # let the API reject long Japanese summaries. Use weighted length.
