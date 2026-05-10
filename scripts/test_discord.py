@@ -128,14 +128,12 @@ def main() -> int:
         chart_png=chart_png, window_ohlcv=window_ohlcv,
     )
 
-    # 6b. X post — only if ENABLE_X_POST=true (so a stray local run doesn't
-    #     accidentally consume quota / publish a fake spike to followers).
+    # 6b. X is INTENTIONALLY skipped in test mode — test posts use a
+    #     fabricated +2.5% spike, and posting that to X would publish a
+    #     misleading alert to real followers. X posts are reserved for
+    #     real production fires from realtime.py / main.py.
     delivered_x = False
-    if os.getenv("ENABLE_X_POST", "false").lower() == "true":
-        log.info("Posting to X (ENABLE_X_POST=true)...")
-        delivered_x = post_x(summary, price_data, spike, chart_png=chart_png)
-    else:
-        log.info("X posting disabled (set ENABLE_X_POST=true to verify)")
+    log.info("X post skipped (test_discord is Discord-only by design)")
 
     # 7. Record to history DB (the test_discord pipeline mirrors main.py).
     alert_id = record_alert(
