@@ -67,13 +67,14 @@ INST_ID = "BTC-USDT-SWAP"
 # 1m fast-track: when an intra-minute |close-open|/open exceeds this, we
 # bypass composite scoring and fire an alert immediately. The existing
 # cooldown still applies, so 5 consecutive big-1m bars only produce one
-# alert. Tuned at 0.5% — typical 1m ATR is ~0.05%, so 0.5% is ~10× ATR.
-FAST_TRACK_RETURN_1M_PCT = float(os.getenv("FAST_TRACK_RETURN_1M_PCT", "0.5"))
+# alert. Raised 0.5 → 1.0% after the user reported alert frequency was
+# too high; 1% in 60s on $80k BTC is ~$800 — a genuine event, not noise.
+FAST_TRACK_RETURN_1M_PCT = float(os.getenv("FAST_TRACK_RETURN_1M_PCT", "1.0"))
 
-# 3m fast-track: same idea on 3-minute bars. 0.7% ≈ 8× the typical 3m ATR,
-# tighter than the proportional 1m equivalent because 3m noise is smaller
-# but a sustained fast move in 3min is genuinely meaningful.
-FAST_TRACK_RETURN_3M_PCT = float(os.getenv("FAST_TRACK_RETURN_3M_PCT", "0.7"))
+# 3m fast-track: 1.3% in 3 minutes keeps the bar at "real news" level
+# rather than triggering on intra-bar wicks. Raised 0.7 → 1.3 to match
+# the new 1m calibration.
+FAST_TRACK_RETURN_3M_PCT = float(os.getenv("FAST_TRACK_RETURN_3M_PCT", "1.3"))
 
 STATE_PATH = Path("data/state.json")
 HISTORY_DB_PATH = Path("data/history.sqlite")

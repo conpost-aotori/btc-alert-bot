@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 # --- Legacy fallback thresholds (used if Bybit features are unavailable) ---
 # 24h was removed at the user's request — only fire on horizons that
 # correspond to actionable spikes (≤1h).
-THRESHOLD_1H_PCT = 2.5
+THRESHOLD_1H_PCT = 3.5
 
 # --- Composite-score weights & gates (Phase 1 initial values from Codex) ---
 SCORE_WEIGHTS = {
@@ -43,19 +43,16 @@ SCORE_WEIGHTS = {
 }
 
 # Hard fire conditions (all must hold).
-FIRE_SCORE_MIN = 2.6
+# Score raised 2.6 → 3.0 to broadly tighten composite fires.
+FIRE_SCORE_MIN = 3.0
 FIRE_ATR_Z_MIN = 1.2
 FIRE_VOL_Z_MIN = 1.5
 
-# Per-window return floors.
-# 5m is the most responsive composite path — moves that complete in 5min get
-# their own window so a single sustained 15min run only triggers one alert,
-# not two cascading ones (5m → 15m).
-# 15m is intentionally tightened (1.8% base, adaptive 0.9-3.6%) so a
-# routine drift doesn't escalate to a "15m" alert just because the trend
-# stayed in one direction for a full quarter-hour.
-FIRE_RETURN_5M_MIN_PCT = 0.5
-FIRE_RETURN_15M_MIN_PCT = 1.8
+# Per-window return floors. Raised across the board after the user
+# reported alert frequency was too high. Previous values fired on what
+# turned out to be normal noise; new values target genuine fast moves.
+FIRE_RETURN_5M_MIN_PCT = 0.8
+FIRE_RETURN_15M_MIN_PCT = 2.5
 
 # Adaptive reference. ``features["atr_pct"]`` is already per-5-min-bar ATR
 # regardless of which return horizon we're testing, so both 5m and 15m
@@ -71,19 +68,18 @@ ADAPTIVE_REF_ATR_PCT_15M = 0.10
 # Each hard floor sits ABOVE the corresponding composite-gate base so a
 # threshold-only path can't quietly bypass the composite tightening.
 # 24h was removed at the user's request (no need to alert on multi-day moves).
-HARD_FALLBACK_RETURN_5M_PCT = 1.0
-HARD_FALLBACK_RETURN_15M_PCT = 2.0  # raised from 1.5 to sit above the
-                                     # 1.8 composite base — without this
-                                     # a 1.6% drift would still fire a
-                                     # 15m alert via the hard floor.
-HARD_FALLBACK_RETURN_1H_PCT = 2.5
+HARD_FALLBACK_RETURN_5M_PCT = 1.5
+HARD_FALLBACK_RETURN_15M_PCT = 3.0
+HARD_FALLBACK_RETURN_1H_PCT = 3.5
 
 # Cooldown: same direction is suppressed longer than a reversal.
 # Per-tier durations let the medium tier (15m) stay quieter than the
 # responsive short tier (1m/3m/5m) — the user reported 15m firing back-to-
 # back on the same sustained trend, so medium gets a 3-hour cooldown.
 COOLDOWN_SAME_DIR_MIN = 90  # default fallback
-COOLDOWN_OPP_DIR_MIN = 30
+# Reversal cooldown raised 30 → 60 min to suppress whiplash alerts when
+# the price oscillates around a level (was firing up + down + up...).
+COOLDOWN_OPP_DIR_MIN = 60
 COOLDOWN_BY_TIER_MIN: dict[str, int] = {
     "short": 90,
     "medium": 180,  # 3 hours — discourage 15m back-to-back on same trend
