@@ -5,9 +5,31 @@ import io
 import json
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 import requests
 import tweepy
+
+# Alerts are timestamped JST in the title so the user can tell at a glance
+# when the bar that triggered closed (UTC is correct internally but JST
+# matches the user's clock).
+_JST = timezone(timedelta(hours=9))
+
+
+def _format_jst(iso_ts: str | None) -> str:
+    """Render an ISO UTC timestamp as ``YYYY/MM/DD HH:MM JST``.
+
+    Returns empty string on parse failure so the title still works.
+    """
+    if not iso_ts:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(_JST).strftime("%Y/%m/%d %H:%M JST")
+    except Exception:
+        return ""
 
 log = logging.getLogger(__name__)
 
@@ -144,11 +166,15 @@ def post_discord(
             },
         ])
 
+    jst_ts = _format_jst(price_data.get("timestamp"))
+    title = "🚨 BTC緊急価格速報"
+    if jst_ts:
+        title = f"{title} ({jst_ts})"
     embed = {
-        # Title intentionally drops the (change / window) suffix — the
-        # Gemini summary's first line already includes that info, so the
-        # parens were duplicating data.
-        "title": "🚨 BTC緊急価格変動速報",
+        # Title shows the JST fire time so users can correlate with their
+        # own chart timeline. Price change / window are intentionally
+        # omitted — the Gemini summary's first line already includes both.
+        "title": title,
         # Leading blank line gives the title visual breathing room before
         # the Gemini summary kicks in.
         "description": f"\n{summary}",
@@ -209,11 +235,14 @@ def post_x(
 
     # Build tweet text: alert header + summary + hashtags.
     # Mirrors the Discord embed title for consistency.
-    # - Drops the (change / window) suffix — same data is in the summary
-    #   first line, so the parens were redundant.
-    # - Wraps ASCII chars in Mathematical Sans-Serif Bold so "BTC" stands
-    #   out on a platform with no markdown. Japanese chars stay regular.
-    header = "🚨 " + _to_bold_ascii("BTC") + "緊急価格変動速報"
+    # - "BTC" wrapped in Mathematical Sans-Serif Bold so it stands out on
+    #   a platform without markdown. Japanese chars stay regular.
+    # - JST fire timestamp appended in parens so the user can correlate
+    #   with their own chart timeline.
+    header = "🚨 " + _to_bold_ascii("BTC") + "緊急価格速報"
+    jst_ts = _format_jst(price_data.get("timestamp"))
+    if jst_ts:
+        header = f"{header} ({jst_ts})"
     hashtags = "#BTC #Bitcoin #暗号資産"
     # Twitter weights CJK chars at 2 each — `len()` would undercount and
     # let the API reject long Japanese summaries. Use weighted length.
