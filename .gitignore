@@ -31,3 +31,9 @@ data/*
 .DS_Store
 Thumbs.db
 scripts/.codex_consult.md
+
+# Claude-related local state (worktrees, session cache, prompts).
+# Without this, a stray `git add .` would vendor a second checkout of the
+# repo plus runtime data inside .claude/worktrees/.
+.claude/
+*.codex_consult*.md

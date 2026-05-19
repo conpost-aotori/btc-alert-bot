@@ -24,6 +24,7 @@ import requests
 from .deribit import fetch_options_factor
 from .derivatives import fetch_derivatives_context
 from .fred import fetch_macro_background
+from .grok_search import fetch_grok_x_search
 from .x_monitor import fetch_x_monitor
 
 log = logging.getLogger(__name__)
@@ -336,7 +337,11 @@ def gather_factors(spike: dict | None = None) -> list[dict]:
     Gemini summarizer doesn't mistake aggregator copies for independent
     confirmations.
     """
-    fetchers = [
+    # Most fetchers are parameter-less; Grok needs the spike context so
+    # it can query X for the exact move that just fired. We submit it
+    # separately with the spike bound rather than refactoring every other
+    # fetcher's signature.
+    parameterless_fetchers = [
         # Primary news + aggregators
         fetch_news,
         fetch_google_news,
@@ -353,8 +358,14 @@ def gather_factors(spike: dict | None = None) -> list[dict]:
         fetch_x_monitor,
     ]
     raw: list[dict] = []
-    with ThreadPoolExecutor(max_workers=len(fetchers)) as ex:
-        futures = {ex.submit(f): f.__name__ for f in fetchers}
+    with ThreadPoolExecutor(
+        max_workers=len(parameterless_fetchers) + 1
+    ) as ex:
+        futures = {
+            ex.submit(f): f.__name__ for f in parameterless_fetchers
+        }
+        # Grok Live Search needs the spike to scope its X query.
+        futures[ex.submit(fetch_grok_x_search, spike)] = "fetch_grok_x_search"
         try:
             for fut in as_completed(futures, timeout=GATHER_FACTORS_DEADLINE_S):
                 name = futures[fut]
@@ -472,12 +483,14 @@ def _deduplicate_factors(items: list[dict]) -> tuple[list[dict], dict[str, int]]
 _SOURCE_WEIGHTS = {
     "macro": 40,                 # imminent confirmed govt/macro release
     "exchange": 38,              # listing / hack / halt is binary truth
+    "x_search_grok": 32,         # Grok Live Search — AI-curated X posts
     "derivatives_liq": 30,       # observed cascade
-    "derivatives_pos": 22,
-    "derivatives_fund": 18,
     "news": 26,                  # dedicated crypto media
+    "derivatives_pos": 22,
     "news_aggregator": 20,       # Google News / CryptoPanic
+    "derivatives_fund": 18,
     "options": 16,               # Deribit IV/skew = backdrop
+    "x_monitor": 14,             # Nitter fallback (deprecated in favor of Grok)
     "macro_background": 12,      # FRED daily = backdrop
     "social_reddit": 10,
     "x_monitor": 14,

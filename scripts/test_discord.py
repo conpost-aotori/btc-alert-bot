@@ -19,18 +19,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+# CRITICAL: load_dotenv() MUST run before importing any module that
+# captures env vars at load time (jp_translator.config reads
+# GEMINI_API_KEY/XAI_API_KEY/etc. on first import via summarizer).
 from dotenv import load_dotenv
 
-from btc_alert_bot.analyzers import gather_factors
-from btc_alert_bot.chart import render_chart
-from btc_alert_bot.features import compute_market_features
-from btc_alert_bot.history import find_similar_alerts, record_alert
-from btc_alert_bot.market import fetch_market_snapshot, fetch_window_ohlcv
-from btc_alert_bot.price import fetch_btc_price
-from btc_alert_bot.publishers import post_discord, post_x
-from btc_alert_bot.summarizer import summarize
-
 load_dotenv()
+
+from btc_alert_bot.analyzers import gather_factors  # noqa: E402
+from btc_alert_bot.chart import render_chart  # noqa: E402
+from btc_alert_bot.features import compute_market_features  # noqa: E402
+from btc_alert_bot.history import find_similar_alerts, record_alert  # noqa: E402
+from btc_alert_bot.market import fetch_market_snapshot, fetch_window_ohlcv  # noqa: E402
+from btc_alert_bot.price import fetch_btc_price  # noqa: E402
+from btc_alert_bot.publishers import post_discord, post_x  # noqa: E402
+from btc_alert_bot.summarizer import summarize  # noqa: E402
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

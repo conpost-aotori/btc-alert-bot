@@ -15,25 +15,29 @@ import os
 import sys
 from pathlib import Path
 
+# CRITICAL: load_dotenv() MUST run before any internal imports that
+# capture env vars at module load time (jp_translator.config reads
+# GEMINI_API_KEY/XAI_API_KEY/etc. on first import). Moving it after the
+# imports left those keys empty even when .env held real values.
 from dotenv import load_dotenv
 
-from .analyzers import gather_factors
-from .chart import render_chart
-from .detector import (
+load_dotenv()
+
+from .analyzers import gather_factors  # noqa: E402
+from .chart import render_chart  # noqa: E402
+from .detector import (  # noqa: E402
     SpikeDetector,
     append_feature_history,
     load_state,
     record_alert_in_state,
     save_state,
 )
-from .features import compute_market_features
-from .history import find_similar_alerts, record_alert
-from .market import fetch_market_snapshot, fetch_window_ohlcv
-from .price import fetch_btc_price
-from .publishers import post_discord, post_x
-from .summarizer import summarize
-
-load_dotenv()
+from .features import compute_market_features  # noqa: E402
+from .history import find_similar_alerts, record_alert  # noqa: E402
+from .market import fetch_market_snapshot, fetch_window_ohlcv  # noqa: E402
+from .price import fetch_btc_price  # noqa: E402
+from .publishers import post_discord, post_x  # noqa: E402
+from .summarizer import summarize  # noqa: E402
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
