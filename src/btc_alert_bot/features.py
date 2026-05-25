@@ -22,7 +22,9 @@ ATR_PERIOD = 14
 
 # How many recent samples we use for robust statistics. Larger windows are
 # stabler but lag regime changes; ~3 days of 5min bars is a good middle.
-HIST_LOOKBACK_BARS = 288  # 24h * 12 bars/h
+# 24h of features at 1-minute sampling cadence (was 288 when composite
+# ran every 5min; bumped 5× after switching to per-1m composite trigger).
+HIST_LOOKBACK_BARS = 1440
 
 
 # ---------------------------------------------------------------------------

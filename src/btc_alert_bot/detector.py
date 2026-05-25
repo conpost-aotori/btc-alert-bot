@@ -117,7 +117,9 @@ WINDOW_RANK: dict[str, int] = {
 }
 
 # Ring buffer: how many feature snapshots to retain in state.json.
-FEATURE_HISTORY_MAX = HIST_LOOKBACK_BARS * 2  # ~48h of 5-min bars
+# ~48h of 1-minute features (was *2 of HIST_LOOKBACK_BARS when sampling
+# was 5-min; same multiplier still keeps 48h after 1m switch).
+FEATURE_HISTORY_MAX = HIST_LOOKBACK_BARS * 2
 
 
 # ---------------------------------------------------------------------------

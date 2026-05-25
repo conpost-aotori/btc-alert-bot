@@ -133,10 +133,13 @@ class RealtimeBot:
                         log.info("WS connected to %s", OKX_WS_URL)
                         delay = RECONNECT_INITIAL_DELAY  # reset on success
                         self.last_activity = time.monotonic()
+                        # 1m drives BOTH fast-track AND full composite
+                        # scoring now (was: composite only on 5m close).
+                        # 3m kept for its own fast-track threshold.
+                        # 5m subscription dropped — redundant with 1m.
                         await ws.send(json.dumps({
                             "op": "subscribe",
                             "args": [
-                                {"channel": "candle5m", "instId": INST_ID},
                                 {"channel": "candle3m", "instId": INST_ID},
                                 {"channel": "candle1m", "instId": INST_ID},
                             ],
@@ -220,7 +223,7 @@ class RealtimeBot:
 
         arg = data.get("arg") or {}
         channel = arg.get("channel")
-        if channel not in ("candle5m", "candle3m", "candle1m"):
+        if channel not in ("candle3m", "candle1m"):
             return
         rows = data.get("data") or []
         if not rows:
@@ -239,12 +242,7 @@ class RealtimeBot:
             )
             return
 
-        if channel == "candle5m":
-            log.info("5m candle closed: ts=%s close=%s", latest[0], latest[4])
-            self._detection_task = asyncio.create_task(self._run_detection_async())
-            return
-
-        # 1m / 3m fast-track: alert directly on big intra-bar moves.
+        # Parse intra-bar move (needed for fast-track check on both 1m/3m).
         try:
             open_p = float(latest[1])
             close_p = float(latest[4])
@@ -253,21 +251,34 @@ class RealtimeBot:
         if open_p <= 0:
             return
         intra_pct = (close_p - open_p) / open_p * 100.0
-        if channel == "candle1m":
-            threshold = FAST_TRACK_RETURN_1M_PCT
-            window = "1m"
-        else:  # candle3m
-            threshold = FAST_TRACK_RETURN_3M_PCT
-            window = "3m"
-        if abs(intra_pct) < threshold:
-            return  # quiet bar, ignore
+
+        threshold = (
+            FAST_TRACK_RETURN_1M_PCT if channel == "candle1m"
+            else FAST_TRACK_RETURN_3M_PCT
+        )
+        window = "1m" if channel == "candle1m" else "3m"
+
+        # Fast-track wins if the intra-bar move clearly crossed its floor.
+        if abs(intra_pct) >= threshold:
+            log.info(
+                "%s FAST-TRACK fired: open=%.2f close=%.2f intra=%+.3f%%",
+                window, open_p, close_p, intra_pct,
+            )
+            self._detection_task = asyncio.create_task(
+                self._run_fast_track_async(intra_pct, close_p, window)
+            )
+            return
+
+        # Otherwise: on 1m close only, run the full composite scoring path
+        # (was: every 5min via candle5m). 3m closes do nothing extra so
+        # we don't double-count the 1m that fired in the same second.
+        if channel != "candle1m":
+            return
         log.info(
-            "%s FAST-TRACK fired: open=%.2f close=%.2f intra=%+.3f%%",
-            window, open_p, close_p, intra_pct,
+            "1m candle closed (composite): ts=%s close=%s intra=%+.3f%%",
+            latest[0], latest[4], intra_pct,
         )
-        self._detection_task = asyncio.create_task(
-            self._run_fast_track_async(intra_pct, close_p, window)
-        )
+        self._detection_task = asyncio.create_task(self._run_detection_async())
 
     # ------------------------------------------------------------------
     # Detection pipeline (mirrors main.py, sync)
