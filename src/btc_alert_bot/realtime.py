@@ -67,18 +67,13 @@ log = logging.getLogger("btc_alert_bot.realtime")
 OKX_WS_URL = "wss://ws.okx.com:8443/ws/v5/business"
 INST_ID = "BTC-USDT-SWAP"
 
-# 1m fast-track: when an intra-minute |close-open|/open exceeds this, we
-# bypass composite scoring and fire an alert immediately. The existing
-# cooldown still applies, so 5 consecutive big-1m bars only produce one
-# alert. Raised 0.5 → 1.0% after the user reported alert frequency was
-# too high; 1% in 60s on $80k BTC is ~$800 — a genuine event, not noise.
-FAST_TRACK_RETURN_1M_PCT = float(os.getenv("FAST_TRACK_RETURN_1M_PCT", "1.0"))
+# 1m fast-track: 0.8% in 60s (~$640 on $80k BTC) — slightly more
+# sensitive than the previous 1.0% per user's "少し閾値を下げよう".
+FAST_TRACK_RETURN_1M_PCT = float(os.getenv("FAST_TRACK_RETURN_1M_PCT", "0.8"))
 
-# 3m fast-track: per-user request, raised to 3.0% so this path only
-# catches genuine flash events (~$2,400 on $80k BTC in 3 minutes is
-# major-news territory). The lower 5m hard floor (1.5%) still covers
-# sustained 5-min runs — they don't need a separate 3m hit.
-FAST_TRACK_RETURN_3M_PCT = float(os.getenv("FAST_TRACK_RETURN_3M_PCT", "3.0"))
+# 3m fast-track: 2.5% in 3 minutes — still in "genuine flash event"
+# territory but a touch more sensitive than the 3.0% it replaced.
+FAST_TRACK_RETURN_3M_PCT = float(os.getenv("FAST_TRACK_RETURN_3M_PCT", "2.5"))
 
 STATE_PATH = Path("data/state.json")
 HISTORY_DB_PATH = Path("data/history.sqlite")
