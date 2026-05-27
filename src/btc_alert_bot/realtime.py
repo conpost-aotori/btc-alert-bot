@@ -67,13 +67,12 @@ log = logging.getLogger("btc_alert_bot.realtime")
 OKX_WS_URL = "wss://ws.okx.com:8443/ws/v5/business"
 INST_ID = "BTC-USDT-SWAP"
 
-# 1m fast-track: 0.8% in 60s (~$640 on $80k BTC) — slightly more
-# sensitive than the previous 1.0% per user's "少し閾値を下げよう".
-FAST_TRACK_RETURN_1M_PCT = float(os.getenv("FAST_TRACK_RETURN_1M_PCT", "0.8"))
+# 1m fast-track: 0.6% in 60s (~$480 on $80k BTC) — second sensitivity
+# bump per "もうちょっと下げよう".
+FAST_TRACK_RETURN_1M_PCT = float(os.getenv("FAST_TRACK_RETURN_1M_PCT", "0.6"))
 
-# 3m fast-track: 2.5% in 3 minutes — still in "genuine flash event"
-# territory but a touch more sensitive than the 3.0% it replaced.
-FAST_TRACK_RETURN_3M_PCT = float(os.getenv("FAST_TRACK_RETURN_3M_PCT", "2.5"))
+# 3m fast-track: 2.0% in 3 minutes — second sensitivity bump from 2.5%.
+FAST_TRACK_RETURN_3M_PCT = float(os.getenv("FAST_TRACK_RETURN_3M_PCT", "2.0"))
 
 STATE_PATH = Path("data/state.json")
 HISTORY_DB_PATH = Path("data/history.sqlite")

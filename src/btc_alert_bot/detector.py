@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 # --- Legacy fallback thresholds (used if Bybit features are unavailable) ---
 # 24h was removed at the user's request — only fire on horizons that
 # correspond to actionable spikes (≤1h).
-THRESHOLD_1H_PCT = 3.0
+THRESHOLD_1H_PCT = 2.5
 
 # --- Composite-score weights & gates (Phase 1 initial values from Codex) ---
 SCORE_WEIGHTS = {
@@ -43,16 +43,15 @@ SCORE_WEIGHTS = {
 }
 
 # Hard fire conditions (all must hold).
-# Score: 3.0 → 2.7 after the user asked to lower thresholds a bit.
-FIRE_SCORE_MIN = 2.7
+# Score lowered again per user "もうちょっと下げよう" (2.7 → 2.4).
+FIRE_SCORE_MIN = 2.4
 FIRE_ATR_Z_MIN = 1.2
 FIRE_VOL_Z_MIN = 1.5
 
-# Per-window return floors. Modestly reduced (~20%) after the user
-# requested a small overall sensitivity bump while keeping the relative
-# 1m << 5m < 15m hierarchy intact.
-FIRE_RETURN_5M_MIN_PCT = 0.6
-FIRE_RETURN_15M_MIN_PCT = 2.0
+# Per-window return floors — second round of sensitivity bumps. Hierarchy
+# (1m << 3m / 5m < 15m) still preserved.
+FIRE_RETURN_5M_MIN_PCT = 0.5
+FIRE_RETURN_15M_MIN_PCT = 1.5
 
 # Adaptive reference. ``features["atr_pct"]`` is already per-5-min-bar ATR
 # regardless of which return horizon we're testing, so both 5m and 15m
@@ -68,9 +67,9 @@ ADAPTIVE_REF_ATR_PCT_15M = 0.10
 # Each hard floor sits ABOVE the corresponding composite-gate base so a
 # threshold-only path can't quietly bypass the composite tightening.
 # 24h was removed at the user's request (no need to alert on multi-day moves).
-HARD_FALLBACK_RETURN_5M_PCT = 1.2
-HARD_FALLBACK_RETURN_15M_PCT = 2.5
-HARD_FALLBACK_RETURN_1H_PCT = 3.0
+HARD_FALLBACK_RETURN_5M_PCT = 1.0
+HARD_FALLBACK_RETURN_15M_PCT = 2.0
+HARD_FALLBACK_RETURN_1H_PCT = 2.5
 
 # Cooldown: same direction is suppressed longer than a reversal.
 # Per-tier durations let the medium tier (15m) stay quieter than the
