@@ -189,15 +189,31 @@ def list_recent_alerts(path: Path, limit: int = 20) -> list[dict]:
 # Components of the similarity vector and the divisor each is normalized
 # by. The divisors are rough "typical max" values so distance comparisons
 # stay scale-invariant across components.
+#
+# Microstructure (vol regime, OI flow, funding) + magnitude (return_5m,
+# return_15m, volume) together describe both "what kind of move" and "how
+# big a move". Direction is filtered separately in the WHERE clause, so
+# return signs always match — magnitude carries directly.
 _SIMILARITY_VECTOR = [
-    ("atr_pct",          0.5),
-    ("move_per_atr",     4.0),
-    ("oi_change_1h_pct", 5.0),
-    ("funding_rate",     0.001),
+    # --- microstructure: what regime are we in? ---
+    ("atr_pct",          0.5),    # vol regime
+    ("move_per_atr",     4.0),    # how unusual is this move vs ATR
+    ("oi_change_1h_pct", 5.0),    # is OI flowing in/out
+    ("funding_rate",     0.001),  # crowd positioning
+    # --- magnitude: how big a move, on what timeframe? ---
+    ("return_5m",        2.0),    # short-window move magnitude
+    ("return_15m",       3.0),    # medium-window move magnitude
+    ("volume_5bar",      1e6),    # rough volume scale (BTC contracts)
 ]
 
 # How many past alerts (per direction) to consider before ranking.
 SIMILARITY_CANDIDATE_LIMIT = 200
+
+# Distance thresholds for the human-readable label attached to each
+# similar alert. Tuned against the small-N history we have today — will
+# need re-tuning once the DB has 1000+ alerts to bucket against.
+_DIST_VERY_SIMILAR = 1.5
+_DIST_SIMILAR = 3.0
 
 
 def _vectorize(features: dict | None) -> list[float] | None:
@@ -271,6 +287,14 @@ def find_similar_alerts(
                     """,
                     (alert["id"],),
                 ).fetchall()
+                # Human label for the prompt so the model can weight the
+                # match qualitatively without parsing the raw distance.
+                if dist <= _DIST_VERY_SIMILAR:
+                    similarity_label = "極めて類似"
+                elif dist <= _DIST_SIMILAR:
+                    similarity_label = "類似"
+                else:
+                    similarity_label = "やや類似"
                 out.append({
                     "id": alert["id"],
                     "ts": alert["ts"],
@@ -280,6 +304,7 @@ def find_similar_alerts(
                     "score": alert.get("spike_score"),
                     "summary": alert.get("summary"),
                     "distance": dist,
+                    "similarity_label": similarity_label,
                     "factors": [dict(f) for f in factors],
                 })
             return out

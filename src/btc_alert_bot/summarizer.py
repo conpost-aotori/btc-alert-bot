@@ -145,7 +145,12 @@ def _render_factor(f: dict) -> str:
 
 
 def _format_similar_alerts(similar: list[dict] | None) -> str:
-    """Render the past-similar-alerts block injected into the Gemini prompt."""
+    """Render the past-similar-alerts block injected into the Gemini prompt.
+
+    Each line is prefixed with a similarity bucket label (極めて類似 /
+    類似 / やや類似) so the model can weight the match qualitatively
+    without inventing precision from the raw Euclidean distance.
+    """
     if not similar:
         return "- (類似履歴なし)"
     lines: list[str] = []
@@ -153,6 +158,7 @@ def _format_similar_alerts(similar: list[dict] | None) -> str:
         ts_short = (s.get("ts") or "")[:16].replace("T", " ")
         change = s.get("change_pct", 0.0)
         window = s.get("window", "?")
+        label = s.get("similarity_label") or "類似"
         # First line of the past summary, truncated.
         past_summary = (s.get("summary") or "").split("\n", 1)[0][:80]
         # Top 2 factors of that alert.
@@ -160,7 +166,9 @@ def _format_similar_alerts(similar: list[dict] | None) -> str:
             f"{f.get('type', '?')}:{(f.get('title') or '')[:40]}"
             for f in (s.get("factors") or [])[:2]
         )
-        line = f"- {ts_short} [{change:+.2f}% / {window}] {past_summary}"
+        line = (
+            f"- [{label}] {ts_short} [{change:+.2f}% / {window}] {past_summary}"
+        )
         if top_factors:
             line += f" / 要因: {top_factors}"
         lines.append(line)

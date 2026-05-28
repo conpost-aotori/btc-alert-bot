@@ -93,43 +93,32 @@ def _extract_assistant_text_and_citations(
     return ("\n".join(text_chunks).strip(), citations)
 
 
-def fetch_grok_x_search(spike: dict | None = None) -> list[dict]:
-    """Ask Grok to scan X for posts that explain this spike.
+def call_grok_x_search(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_output_tokens: int = MAX_OUTPUT_TOKENS,
+    timeout_s: float = GROK_TIMEOUT_S,
+) -> tuple[str, list[str]] | None:
+    """Shared /v1/responses + x_search call. Returns ``(text, citations)`` or None.
 
-    Returns 0 or 1 factor entries. Never raises — failures degrade to
-    an empty list so the rest of the alert pipeline continues.
-    Silent skip when ``XAI_API_KEY`` is not set (opt-in feature).
+    Public so the whale_monitor / x_list_monitor modules can reuse the same
+    transport without duplicating the request/parse boilerplate. None means
+    "skip silently" (no key, network failure, or bad HTTP) — callers should
+    return [] when they get None.
     """
     api_key = os.getenv("XAI_API_KEY")
     if not api_key:
-        return []
-
-    direction = (spike or {}).get("direction", "")
-    change = (spike or {}).get("change", 0.0)
-    window = (spike or {}).get("window", "")
-    direction_jp = (
-        "上昇" if direction == "up" else "下落" if direction == "down" else ""
-    )
-
-    # Compact English prompt; Grok still answers in Japanese per system prompt.
-    direction_en = (
-        "drop" if direction == "down" else "rally" if direction == "up" else "move"
-    )
-    user_prompt = (
-        f"BTC just had a {change:+.2f}% {direction_en} on {window} window. "
-        f"Search X for the most likely driver in the last 1-2 hours."
-    )
-
+        return None
     payload = {
         "model": DEFAULT_MODEL,
         "tools": [{"type": "x_search"}],
         "input": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "max_output_tokens": MAX_OUTPUT_TOKENS,
+        "max_output_tokens": max_output_tokens,
     }
-
     try:
         resp = requests.post(
             XAI_RESPONSES_URL,
@@ -138,15 +127,39 @@ def fetch_grok_x_search(spike: dict | None = None) -> list[dict]:
                 "Content-Type": "application/json",
             },
             json=payload,
-            timeout=GROK_TIMEOUT_S,
+            timeout=timeout_s,
         )
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        log.warning("Grok X search failed: %s", e)
-        return []
+        log.warning("Grok call failed: %s", e)
+        return None
+    return _extract_assistant_text_and_citations(data)
 
-    text, citations = _extract_assistant_text_and_citations(data)
+
+def fetch_grok_x_search(spike: dict | None = None) -> list[dict]:
+    """Ask Grok to scan X for posts that explain this spike.
+
+    Returns 0 or 1 factor entries. Never raises — failures degrade to
+    an empty list so the rest of the alert pipeline continues.
+    Silent skip when ``XAI_API_KEY`` is not set (opt-in feature).
+    """
+    direction = (spike or {}).get("direction", "")
+    change = (spike or {}).get("change", 0.0)
+    window = (spike or {}).get("window", "")
+
+    direction_en = (
+        "drop" if direction == "down" else "rally" if direction == "up" else "move"
+    )
+    user_prompt = (
+        f"BTC just had a {change:+.2f}% {direction_en} on {window} window. "
+        f"Search X for the most likely driver in the last 1-2 hours."
+    )
+
+    result = call_grok_x_search(_SYSTEM_PROMPT, user_prompt)
+    if result is None:
+        return []
+    text, citations = result
     if not text or "該当なし" in text:
         log.info("Grok X search: no relevant posts found")
         return []

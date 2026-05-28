@@ -25,6 +25,8 @@ from .deribit import fetch_options_factor
 from .derivatives import fetch_derivatives_context
 from .fred import fetch_macro_background
 from .grok_search import fetch_grok_x_search
+from .whale_monitor import fetch_whale_alerts
+from .x_list_monitor import fetch_x_list_signals
 from .x_monitor import fetch_x_monitor
 
 log = logging.getLogger(__name__)
@@ -359,15 +361,26 @@ def gather_factors(spike: dict | None = None) -> list[dict]:
         fetch_reddit_signal,
         fetch_x_monitor,
     ]
+    # Grok-backed fetchers all share the same /v1/responses + x_search
+    # transport; running them in parallel just multiplies the wall-time
+    # safe ceiling (each ~10-25s, parallel total still ~25s). Each is
+    # an independent question (general drivers / whales / curated list)
+    # so we deliberately don't merge them — the ranker uses the type
+    # distinction for credibility weighting.
+    grok_fetchers = [
+        (fetch_grok_x_search, "fetch_grok_x_search"),
+        (fetch_whale_alerts, "fetch_whale_alerts"),
+        (fetch_x_list_signals, "fetch_x_list_signals"),
+    ]
     raw: list[dict] = []
     with ThreadPoolExecutor(
-        max_workers=len(parameterless_fetchers) + 1
+        max_workers=len(parameterless_fetchers) + len(grok_fetchers)
     ) as ex:
         futures = {
             ex.submit(f): f.__name__ for f in parameterless_fetchers
         }
-        # Grok Live Search needs the spike to scope its X query.
-        futures[ex.submit(fetch_grok_x_search, spike)] = "fetch_grok_x_search"
+        for fn, name in grok_fetchers:
+            futures[ex.submit(fn, spike)] = name
         try:
             for fut in as_completed(futures, timeout=GATHER_FACTORS_DEADLINE_S):
                 name = futures[fut]
@@ -485,17 +498,18 @@ def _deduplicate_factors(items: list[dict]) -> tuple[list[dict], dict[str, int]]
 _SOURCE_WEIGHTS = {
     "macro": 40,                 # imminent confirmed govt/macro release
     "exchange": 38,              # listing / hack / halt is binary truth
-    "x_search_grok": 32,         # Grok Live Search — AI-curated X posts
+    "whale_transfer": 34,        # observed on-chain flow (>= $10M) — hard evidence
+    "x_list": 33,                # curated high-signal account list (Saylor/Trump/etc)
+    "x_search_grok": 32,         # Grok broad X search — AI-curated
     "derivatives_liq": 30,       # observed cascade
     "news": 26,                  # dedicated crypto media
     "derivatives_pos": 22,
     "news_aggregator": 20,       # Google News / CryptoPanic
     "derivatives_fund": 18,
     "options": 16,               # Deribit IV/skew = backdrop
-    "x_monitor": 14,             # Nitter fallback (deprecated in favor of Grok)
     "macro_background": 12,      # FRED daily = backdrop
     "social_reddit": 10,
-    "x_monitor": 14,
+    "x_monitor": 8,              # Nitter fallback — usually broken, deprioritized
     "derivatives": 18,           # legacy bucket
 }
 
