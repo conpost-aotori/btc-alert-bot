@@ -85,6 +85,12 @@ HARD_FALLBACK_RETURN_1H_PCT = 2.0
 # moved -2.86%/24h with max 1h slope only 0.91% but 2h max 1.53%;
 # 1.5% threshold catches exactly that band.
 HARD_FALLBACK_RETURN_2H_PCT = 1.5
+# 12h "status report" mode — fires once when a meaningful multi-hour
+# trend has unfolded but no shorter window caught the move. The
+# "extended" tier (defined below) gets a 6h cooldown so this fires
+# at most a few times per day — it's news, not a spike. 3.0% is set
+# such that 6/2's -3.06%/12h would just barely fire.
+HARD_FALLBACK_RETURN_12H_PCT = 3.0
 
 # Cooldown: same direction is suppressed longer than a reversal.
 # Per-tier durations let the medium tier (15m) stay quieter than the
@@ -98,15 +104,18 @@ COOLDOWN_BY_TIER_MIN: dict[str, int] = {
     "short": 90,
     "medium": 180,  # 3 hours — discourage 15m back-to-back on same trend
     "long": 90,
+    "extended": 360,  # 6 hours — 12h status reports must not spam
 }
 
 # ---------------------------------------------------------------------------
 # Timeframe tiers — controls how alerts of different windows suppress each
 # other. Per the user's design:
-#   short  (1m/3m/5m) : the primary detection band
-#   medium (15m)       : suppressed when a recent short-tier alert exists
-#   long   (1h)        : independent — fires only on large moves
-# Anything longer than 1h does not generate alerts at all.
+#   short    (1m/3m/5m) : primary spike detection band
+#   medium   (15m)      : suppressed when a recent short-tier alert exists
+#   long     (1h/2h)    : independent of short — large or grinding moves
+#   extended (12h)      : "状況報告" mode — suppressed by recent long-tier
+#                         alert (the long-tier message already conveys it)
+# Anything longer than 12h does not generate alerts.
 # ---------------------------------------------------------------------------
 WINDOW_TIER: dict[str, str] = {
     "1m": "short",
@@ -115,8 +124,9 @@ WINDOW_TIER: dict[str, str] = {
     "15m": "medium",
     "1h": "long",
     "2h": "long",   # slow-grind detector — shares the long tier with 1h
+    "12h": "extended",  # status-report mode — half-day cumulative move
 }
-TIER_RANK = {"short": 0, "medium": 1, "long": 2}
+TIER_RANK = {"short": 0, "medium": 1, "long": 2, "extended": 3}
 
 # Intra-tier window rank — used by _is_suppressed() to enforce the
 # user's rule that *faster windows preempt slower windows* but not the
@@ -136,6 +146,7 @@ WINDOW_RANK: dict[str, int] = {
     "15m": 0,   # only one window in the medium tier
     "1h":  0,   # 1h is the faster of the two long-tier windows
     "2h":  1,   # 2h is slower → preempted by recent same-direction 1h
+    "12h": 0,   # only one window in the extended tier
 }
 
 # Ring buffer: how many feature snapshots to retain in state.json.
@@ -326,6 +337,15 @@ class SpikeDetector:
             fired_change = features["return_2h"]
             fired_direction = "up" if features["return_2h"] >= 0 else "down"
             reasons.append(f"2h move {fired_change:+.2f}% over slow-grind floor")
+        elif abs(features.get("return_12h", 0.0)) >= HARD_FALLBACK_RETURN_12H_PCT:
+            # 12h "status report" — last resort, fires only when none of
+            # the shorter windows did but a multi-hour drift accumulated
+            # past 3%. Suppressed by recent same-direction long-tier
+            # alerts in _is_suppressed() so it doesn't echo a 1h/2h fire.
+            fired_window = "12h"
+            fired_change = features["return_12h"]
+            fired_direction = "up" if features["return_12h"] >= 0 else "down"
+            reasons.append(f"12h cumulative {fired_change:+.2f}% (status report)")
 
         # --- 4. Composite gate: independent 5m and 15m windows ---
         # 5m is the responsive timeframe — fires often. 15m is the trend-
@@ -423,6 +443,7 @@ class SpikeDetector:
             ("15m", features.get("return_15m", 0.0), HARD_FALLBACK_RETURN_15M_PCT),
             ("1h",  features.get("return_1h",  0.0), HARD_FALLBACK_RETURN_1H_PCT),
             ("2h",  features.get("return_2h",  0.0), HARD_FALLBACK_RETURN_2H_PCT),
+            ("12h", features.get("return_12h", 0.0), HARD_FALLBACK_RETURN_12H_PCT),
         ):
             if abs(value) >= hard:
                 direction = "up" if value >= 0 else "down"
@@ -588,5 +609,24 @@ class SpikeDetector:
                     )
                     return True
 
-        # Long tier (1h) and short tier are independent of each other.
+        # 3) Cross-tier: extended (12h) is suppressed by ANY recent
+        #    same-direction LONG-tier alert (1h/2h). The long-tier
+        #    message already conveys "trend is X" — the 12h status
+        #    report would just repeat the same news with stale
+        #    context. Uses the extended tier's longer cooldown
+        #    (6h default) so the suppression window matches the
+        #    "don't repeat" intent.
+        if spike_tier == "extended":
+            long_last = self._last_tier_alert("long")
+            if long_last:
+                ts, last_dir, _ = long_last
+                elapsed = (now - ts).total_seconds() / 60
+                if last_dir == direction and elapsed < same_dir_cooldown:
+                    log.info(
+                        "Suppressed: extended-tier (12h) alert preempted "
+                        "by long-tier alert %.1f min ago", elapsed,
+                    )
+                    return True
+
+        # Long tier (1h/2h) and short tier are independent of each other.
         return False

@@ -143,6 +143,10 @@ def compute_market_features(snapshot: dict, state: dict | None = None) -> dict:
     # a sharp 1h move but accumulate meaningfully — observed 6/1 BTC moved
     # -2.86% / 24h with no 1h slope > 0.91%, but 2h max was 1.53%.
     return_2h = compute_returns_pct([*closes, live_close], 24) if len(closes) >= 24 else 0.0
+    # 12h horizon for "status-report" mode — fires when none of the
+    # shorter windows did but a meaningful trend has unfolded. Observed
+    # 6/2 BTC was -3.06% / 12h with no 1h/2h slope crossing thresholds.
+    return_12h = compute_returns_pct([*closes, live_close], 144) if len(closes) >= 144 else 0.0
     return_24h = compute_returns_pct([*closes, live_close], 288) if len(closes) >= 288 else 0.0
 
     # |return_15m| normalized by ATR — "how big is this move vs typical 15m move?".
@@ -179,6 +183,7 @@ def compute_market_features(snapshot: dict, state: dict | None = None) -> dict:
         "return_15m": return_15m,
         "return_1h": return_1h,
         "return_2h": return_2h,
+        "return_12h": return_12h,
         "return_24h": return_24h,
         "move_per_atr": move_per_atr,
         "volume_now": vol_now,
