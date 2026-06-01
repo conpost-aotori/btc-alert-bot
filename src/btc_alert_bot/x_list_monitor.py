@@ -15,6 +15,13 @@ Designed accounts:
 - @WuBlockchain    : Chinese / Asian crypto news
 - @WatcherGuru     : breaking macro + crypto headlines
 - @DeItaone        : terminal-style breaking news
+- @nick_timiraos   : WSJ Fed reporter — pre-FOMC leak source; the
+                     two-axis-of-BTC-pain that is Fed pivots gets
+                     telegraphed here first.
+- @EricBalchunas   : Bloomberg ETF analyst; spot BTC ETF flow data
+                     (IBIT/FBTC inflows-outflows) drives BTC supply
+                     dynamics and was the documented driver of the
+                     5/28 -2% fire (id=6).
 
 Default list is hardcoded but overridable via env ``X_SIGNAL_ACCOUNTS``
 (comma-separated, no @ prefix).
@@ -34,12 +41,16 @@ log = logging.getLogger(__name__)
 
 
 DEFAULT_ACCOUNTS = [
+    # Established crypto-native signals
     "saylor",
     "realDonaldTrump",
     "elonmusk",
     "WuBlockchain",
     "WatcherGuru",
     "DeItaone",
+    # Macro / institutional axis — added per user expansion (recommended)
+    "nick_timiraos",   # WSJ Fed insider, primary FOMC leak source
+    "EricBalchunas",   # Bloomberg ETF analyst, spot BTC ETF flows
 ]
 
 
