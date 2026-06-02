@@ -28,6 +28,7 @@ import matplotlib.patheffects as _pe  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import mplfinance as mpf  # noqa: E402
 import pandas as pd  # noqa: E402
+from matplotlib.lines import Line2D as _Line2D  # noqa: E402
 
 from .market import fetch_klines  # noqa: E402
 
@@ -74,6 +75,45 @@ _BANNER_DOWN_COLOR = "#C81414"
 # Alerts are timestamped JST so the user can correlate with their own
 # clock. UTC is correct internally but the chart caption shows JST.
 _JST = timezone(timedelta(hours=9))
+
+
+def _draw_bitcoin_logo(fig, cx: float, cy: float, disc_h: float) -> None:
+    """Draw a Bitcoin logo (orange disc + white ₿) at figure coords (cx, cy).
+
+    Rendered as vector art — an orange circle, a white italic "B", and two
+    vertical prongs — rather than the U+20BF glyph, because neither the
+    bundled DejaVu Sans nor Noto CJK contain the Bitcoin sign (verified:
+    matplotlib warns "Glyph 8383 missing"). This keeps the logo identical
+    across the Windows dev box and the Linux container.
+    """
+    # Figure isn't square, so scale the width fraction by H/W to get a
+    # true circle instead of an ellipse.
+    aspect = fig.get_figwidth() / fig.get_figheight()
+    disc_w = disc_h / aspect
+    fig.patches.append(_mpatches.Ellipse(
+        (cx, cy), disc_w, disc_h,
+        transform=fig.transFigure,
+        facecolor="#F7931A",  # Bitcoin brand orange
+        edgecolor="none",
+        zorder=2,
+    ))
+    # White italic "B" body.
+    fig.text(
+        cx, cy, "B",
+        ha="center", va="center",
+        fontsize=17, color="white", weight="bold", style="italic",
+        zorder=4,
+    )
+    # Two vertical prongs through the B's stem, poking out top & bottom —
+    # the detail that turns a plain "B" into the Bitcoin ₿.
+    prong_half = disc_h * 0.42
+    for dx in (-0.30 * disc_w, 0.02 * disc_w):
+        fig.add_artist(_Line2D(
+            [cx + dx, cx + dx], [cy - prong_half, cy + prong_half],
+            transform=fig.transFigure,
+            color="white", linewidth=1.6, zorder=3,
+            solid_capstyle="butt",
+        ))
 
 
 def _jst_label(price_data: dict, df: pd.DataFrame) -> str:
@@ -221,6 +261,10 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
         edgecolor="none",
         zorder=1,
     ))
+
+    # Bitcoin logo on the banner's left edge.
+    _draw_bitcoin_logo(fig, cx=0.045, cy=0.95, disc_h=0.072)
+
     # The 緊急〜速報 title is the single most prominent element on the
     # chart: large, heavy white text with a dark outline so it pops on
     # both the red and the (brighter) green banner.
