@@ -22,6 +22,7 @@ import matplotlib
 matplotlib.use("Agg")  # Headless backend — required in CI.
 
 import matplotlib.font_manager as _fm  # noqa: E402
+import matplotlib.patches as _mpatches  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import mplfinance as mpf  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -126,22 +127,66 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
     )
 
     arrow = "↑" if spike["direction"] == "up" else "↓"
-    title = (
+    subtitle = (
         f"BTC/USDT  ${price_data['price_usd']:,.0f}  "
         f"{arrow} {spike['change']:+.2f}% / {spike['window']}"
     )
 
+    # tight_layout=False so we can control the top margin ourselves
+    # (the banner + subtitle band needs ~22% of the figure height that
+    # mpf's auto-layout otherwise reclaims for the chart).
     fig, _axes = mpf.plot(
         df,
         type="candle",
         style=style,
-        title=title,
+        # Title intentionally omitted — we draw the urgent banner +
+        # subtitle ourselves below so neither collides with the chart.
         ylabel="USD",
-        figsize=(10, 5),
-        tight_layout=True,
+        figsize=(10, 5.4),
+        tight_layout=False,
         datetime_format="%H:%M",
         xrotation=0,
         returnfig=True,
+    )
+
+    # --- 緊急価格変動速報 banner (earthquake-EW style) -------------------
+    # User wanted the chart to read like 緊急地震速報: deep red banner
+    # spanning the full top, white heavy text, immediately readable as
+    # "something serious just happened". Applied to every fire — every
+    # alert the bot publishes is by definition urgent.
+    #
+    # Layout from top to bottom of figure:
+    #   y=0.91-1.00  red banner with "緊急価格変動速報" (white bold)
+    #   y=0.84-0.89  BTC/USDT subtitle band
+    #   y=0.10-0.80  chart axes
+    fig.subplots_adjust(top=0.80, bottom=0.10, left=0.07, right=0.97)
+    BANNER_RED = "#C81414"  # deeper than the candle red so it stands out
+    fig.patches.append(_mpatches.Rectangle(
+        (0.0, 0.91), 1.0, 0.09,
+        transform=fig.transFigure,
+        facecolor=BANNER_RED,
+        edgecolor="none",
+        zorder=1,
+    ))
+    banner_kwargs = dict(
+        ha="center", va="center",
+        fontsize=22, color="white", weight="bold",
+        zorder=2,
+    )
+    if _CJK_FONT_PROPS is not None:
+        # Synthetic-bold via matplotlib weight kwarg since Noto CJK
+        # Regular is the only face we addfont()'d. Good enough for the
+        # banner without bundling another font.
+        banner_kwargs["fontproperties"] = _CJK_FONT_PROPS
+    fig.text(0.5, 0.955, "緊急価格変動速報", **banner_kwargs)
+
+    # Subtitle in the gap between subplot top (0.80) and banner (0.91).
+    # Centered at 0.855 keeps it clear of both.
+    fig.text(
+        0.5, 0.855, subtitle,
+        ha="center", va="center",
+        fontsize=14, color="white", weight="bold",
+        zorder=2,
     )
 
     # Footer left: source attribution (subtle).
