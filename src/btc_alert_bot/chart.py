@@ -104,14 +104,15 @@ def _draw_bitcoin_logo(fig, cx: float, cy: float, disc_h: float) -> None:
         fontsize=17, color="white", weight="bold", style="italic",
         zorder=4,
     )
-    # Two vertical prongs through the B's stem, poking out top & bottom —
-    # the detail that turns a plain "B" into the Bitcoin ₿.
-    prong_half = disc_h * 0.42
-    for dx in (-0.30 * disc_w, 0.02 * disc_w):
+    # Two vertical prongs that poke modestly out the top & bottom of the
+    # "B" — the detail that turns a plain B into the Bitcoin ₿. They sit
+    # close together over the letter's stem (not spread across the disc).
+    prong_half = disc_h * 0.40
+    for dx in (-0.09 * disc_w, 0.05 * disc_w):
         fig.add_artist(_Line2D(
             [cx + dx, cx + dx], [cy - prong_half, cy + prong_half],
             transform=fig.transFigure,
-            color="white", linewidth=1.6, zorder=3,
+            color="white", linewidth=1.8, zorder=3,
             solid_capstyle="butt",
         ))
 
