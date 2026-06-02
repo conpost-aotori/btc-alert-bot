@@ -24,6 +24,7 @@ matplotlib.use("Agg")  # Headless backend — required in CI.
 
 import matplotlib.font_manager as _fm  # noqa: E402
 import matplotlib.patches as _mpatches  # noqa: E402
+import matplotlib.patheffects as _pe  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import mplfinance as mpf  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -59,6 +60,16 @@ _CJK_FONT_PROPS = (
 plt.rcParams["axes.unicode_minus"] = False
 
 log = logging.getLogger(__name__)
+
+# Candle colors — shared between the candlestick body and the urgent
+# banner so an "up" banner is the exact green of an up candle.
+_CANDLE_UP_GREEN = "#00C853"
+_CANDLE_DOWN_RED = "#FF5252"
+# Banner background per direction. Up uses the candle green verbatim
+# (user request). Down uses a deeper red than the candle so the crash
+# banner reads as more urgent than an ordinary down bar.
+_BANNER_UP_COLOR = _CANDLE_UP_GREEN
+_BANNER_DOWN_COLOR = "#C81414"
 
 # Alerts are timestamped JST so the user can correlate with their own
 # clock. UTC is correct internally but the chart caption shows JST.
@@ -135,11 +146,11 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
 
     # Discord-dark themed style.
     market_colors = mpf.make_marketcolors(
-        up="#00C853",
-        down="#FF5252",
+        up=_CANDLE_UP_GREEN,
+        down=_CANDLE_DOWN_RED,
         edge="inherit",
-        wick={"up": "#00C853", "down": "#FF5252"},
-        volume={"up": "#00C85355", "down": "#FF525255"},
+        wick={"up": _CANDLE_UP_GREEN, "down": _CANDLE_DOWN_RED},
+        volume={"up": _CANDLE_UP_GREEN + "55", "down": _CANDLE_DOWN_RED + "55"},
     )
     style = mpf.make_mpf_style(
         base_mpf_style="nightclouds",
@@ -198,29 +209,38 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
     #   y=0.10-0.86  chart axes
     #   chart bottom-right: JST fire-time caption
     fig.subplots_adjust(top=0.86, bottom=0.10, left=0.07, right=0.97)
-    BANNER_RED = "#C81414"  # deeper than the candle red so it stands out
+    # Banner color tracks direction: green (= up candle) / deep red.
+    banner_color = (
+        _BANNER_UP_COLOR if spike["direction"] == "up" else _BANNER_DOWN_COLOR
+    )
     fig.patches.append(_mpatches.Rectangle(
         (0.0, 0.90), 1.0, 0.10,
         transform=fig.transFigure,
-        facecolor=BANNER_RED,
+        facecolor=banner_color,
         edgecolor="none",
         zorder=1,
     ))
+    # The 緊急〜速報 title is the single most prominent element on the
+    # chart: large, heavy white text with a dark outline so it pops on
+    # both the red and the (brighter) green banner.
     banner_kwargs = dict(
         ha="center", va="center",
-        fontsize=24, color="white", weight="bold",
-        zorder=2,
+        fontsize=32, color="white", weight="bold",
+        zorder=3,
     )
     if _CJK_FONT_PROPS is not None:
         # Synthetic-bold via matplotlib weight kwarg since Noto CJK
         # Regular is the only face we addfont()'d. Good enough for the
         # banner without bundling another font.
         banner_kwargs["fontproperties"] = _CJK_FONT_PROPS
-    fig.text(0.5, 0.955, banner_text, **banner_kwargs)
+    banner_obj = fig.text(0.5, 0.95, banner_text, **banner_kwargs)
+    banner_obj.set_path_effects([
+        _pe.withStroke(linewidth=4, foreground="#000000AA"),
+    ])
 
     # Ticker numbers in the banner's bottom-right corner (white, smaller).
     fig.text(
-        0.985, 0.915, ticker,
+        0.985, 0.912, ticker,
         ha="right", va="center",
         fontsize=12.5, color="white", weight="bold",
         zorder=2,
