@@ -203,14 +203,16 @@ def post_discord(
         ])
 
     jst_ts = _format_jst(price_data.get("timestamp"))
-    # Direction-aware surge emoji right after 速報 so the user can tell
-    # up/down at a glance even before reading the body.
-    direction_emoji = "📈" if spike.get("direction") == "up" else "📉"
+    # Direction-aware wording (暴騰/暴落) + matching surge emoji, so the
+    # user can tell up/down at a glance — mirrors the chart banner.
+    is_up = spike.get("direction") == "up"
+    event_word = "暴騰" if is_up else "暴落"
+    direction_emoji = "📈" if is_up else "📉"
     # Move snippet like "5分で0.50%下落" — shows the timeframe + magnitude
     # the detector tripped on, right in the title so the user can decide
     # whether to open the embed before reading the summary body.
     move_snippet = _format_move_snippet(spike)
-    title = f"🚨 BTC緊急価格速報{direction_emoji}"
+    title = f"🚨 BTC緊急{event_word}速報{direction_emoji}"
     if move_snippet:
         title = f"{title} {move_snippet}"
     if jst_ts:
@@ -284,15 +286,16 @@ def post_x(
     #   a platform without markdown. Japanese chars stay regular.
     # - JST fire timestamp appended in parens so the user can correlate
     #   with their own chart timeline.
-    # Direction-aware surge emoji right after 速報 — same visual cue as
-    # the Discord embed title, so cross-platform readers see the same
-    # up/down marker.
-    direction_emoji = "📈" if spike.get("direction") == "up" else "📉"
-    # Move snippet like "5分で0.50%下落" — mirrors the Discord title so
-    # cross-platform readers see identical headline content. Adds ~15
-    # weighted X chars, body budget still ≥160 weighted units.
+    # Direction-aware wording (暴騰/暴落) + matching surge emoji — same
+    # cue as the Discord embed title and the chart banner, so cross-
+    # platform readers see identical headline content.
+    is_up = spike.get("direction") == "up"
+    event_word = "暴騰" if is_up else "暴落"
+    direction_emoji = "📈" if is_up else "📉"
+    # Move snippet like "5分で0.50%下落" — mirrors the Discord title.
+    # Adds ~15 weighted X chars; body budget still ≥150 weighted units.
     move_snippet = _format_move_snippet(spike)
-    header = "🚨 " + _to_bold_ascii("BTC") + f"緊急価格速報{direction_emoji}"
+    header = "🚨 " + _to_bold_ascii("BTC") + f"緊急{event_word}速報{direction_emoji}"
     if move_snippet:
         header = f"{header} {move_snippet}"
     jst_ts = _format_jst(price_data.get("timestamp"))
