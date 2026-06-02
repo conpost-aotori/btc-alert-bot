@@ -172,10 +172,11 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
     # Direction-specific event word — 暴騰 (surge up) / 暴落 (crash down).
     event_word = "暴騰" if spike["direction"] == "up" else "暴落"
     banner_text = f"緊急{event_word}速報"
-    # Ticker line moved into the banner's bottom-right corner.
+    # Ticker line, bottom-right of the banner. Tightly spaced (no padding
+    # around the slash) so it reads as a compact secondary label.
     ticker = (
-        f"BTC/USDT  ${price_data['price_usd']:,.0f}  "
-        f"{arrow} {spike['change']:+.2f}% / {spike['window']}"
+        f"BTC/USDT ${price_data['price_usd']:,.0f} "
+        f"{arrow}{spike['change']:+.2f}%/{spike['window']}"
     )
     jst_caption = _jst_label(price_data, df)
 
@@ -238,13 +239,18 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
         _pe.withStroke(linewidth=4, foreground="#000000AA"),
     ])
 
-    # Ticker numbers in the banner's bottom-right corner (white, smaller).
-    fig.text(
-        0.985, 0.912, ticker,
+    # Ticker on the bottom-right of the band. y=0.922 keeps it in the
+    # lower portion (user prefers it there) but lifted just off the
+    # band/chart boundary (0.90) so it no longer sits ON the dividing
+    # line. Semi-transparent so it stays subordinate to the headline.
+    ticker_kwargs = dict(
         ha="right", va="center",
-        fontsize=12.5, color="white", weight="bold",
+        fontsize=12, color="white", alpha=0.9, weight="bold",
         zorder=2,
     )
+    if _CJK_FONT_PROPS is not None:
+        ticker_kwargs["fontproperties"] = _CJK_FONT_PROPS
+    fig.text(0.985, 0.922, ticker, **ticker_kwargs)
 
     # JST fire-time caption in the chart's bottom-right corner — subtle so
     # it reads as a timestamp watermark, not a data label.
