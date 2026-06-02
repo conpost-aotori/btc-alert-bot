@@ -16,6 +16,7 @@ import io
 import logging
 
 import os.path
+from datetime import datetime, timedelta, timezone
 
 import matplotlib
 
@@ -58,6 +59,36 @@ _CJK_FONT_PROPS = (
 plt.rcParams["axes.unicode_minus"] = False
 
 log = logging.getLogger(__name__)
+
+# Alerts are timestamped JST so the user can correlate with their own
+# clock. UTC is correct internally but the chart caption shows JST.
+_JST = timezone(timedelta(hours=9))
+
+
+def _jst_label(price_data: dict, df: pd.DataFrame) -> str:
+    """Render the fire time as ``YYYY/MM/DD HH:MM JST`` for the chart caption.
+
+    Prefers ``price_data['timestamp']`` (the detector's observed time);
+    falls back to the last candle's index, then to empty string so the
+    chart still renders if no timestamp is available.
+    """
+    dt: datetime | None = None
+    iso = price_data.get("timestamp")
+    if iso:
+        try:
+            dt = datetime.fromisoformat(iso)
+        except Exception:
+            dt = None
+    if dt is None and len(df.index):
+        try:
+            dt = df.index[-1].to_pydatetime()
+        except Exception:
+            dt = None
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_JST).strftime("%Y/%m/%d %H:%M JST")
 
 # (OKX bar code, num candles) per spike window.
 # OKX bar codes: "1m","3m","5m","15m","30m","1H","2H","4H","6H","12H","1D"...
@@ -127,20 +158,25 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
     )
 
     arrow = "↑" if spike["direction"] == "up" else "↓"
-    subtitle = (
+    # Direction-specific event word — 暴騰 (surge up) / 暴落 (crash down).
+    event_word = "暴騰" if spike["direction"] == "up" else "暴落"
+    banner_text = f"緊急{event_word}速報"
+    # Ticker line moved into the banner's bottom-right corner.
+    ticker = (
         f"BTC/USDT  ${price_data['price_usd']:,.0f}  "
         f"{arrow} {spike['change']:+.2f}% / {spike['window']}"
     )
+    jst_caption = _jst_label(price_data, df)
 
     # tight_layout=False so we can control the top margin ourselves
-    # (the banner + subtitle band needs ~22% of the figure height that
-    # mpf's auto-layout otherwise reclaims for the chart).
+    # (the banner band needs ~14% of the figure height that mpf's
+    # auto-layout otherwise reclaims for the chart).
     fig, _axes = mpf.plot(
         df,
         type="candle",
         style=style,
-        # Title intentionally omitted — we draw the urgent banner +
-        # subtitle ourselves below so neither collides with the chart.
+        # Title intentionally omitted — we draw the urgent banner + ticker
+        # ourselves so nothing collides with the chart.
         ylabel="USD",
         figsize=(10, 5.4),
         tight_layout=False,
@@ -149,20 +185,22 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
         returnfig=True,
     )
 
-    # --- 緊急価格変動速報 banner (earthquake-EW style) -------------------
+    # --- 緊急暴落/暴騰速報 banner (earthquake-EW style) ------------------
     # User wanted the chart to read like 緊急地震速報: deep red banner
     # spanning the full top, white heavy text, immediately readable as
     # "something serious just happened". Applied to every fire — every
     # alert the bot publishes is by definition urgent.
     #
     # Layout from top to bottom of figure:
-    #   y=0.91-1.00  red banner with "緊急価格変動速報" (white bold)
-    #   y=0.84-0.89  BTC/USDT subtitle band
-    #   y=0.10-0.80  chart axes
-    fig.subplots_adjust(top=0.80, bottom=0.10, left=0.07, right=0.97)
+    #   y=0.90-1.00  red banner:
+    #                  · title "緊急暴落速報" centered
+    #                  · ticker numbers at the bottom-right corner
+    #   y=0.10-0.86  chart axes
+    #   chart bottom-right: JST fire-time caption
+    fig.subplots_adjust(top=0.86, bottom=0.10, left=0.07, right=0.97)
     BANNER_RED = "#C81414"  # deeper than the candle red so it stands out
     fig.patches.append(_mpatches.Rectangle(
-        (0.0, 0.91), 1.0, 0.09,
+        (0.0, 0.90), 1.0, 0.10,
         transform=fig.transFigure,
         facecolor=BANNER_RED,
         edgecolor="none",
@@ -170,7 +208,7 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
     ))
     banner_kwargs = dict(
         ha="center", va="center",
-        fontsize=22, color="white", weight="bold",
+        fontsize=24, color="white", weight="bold",
         zorder=2,
     )
     if _CJK_FONT_PROPS is not None:
@@ -178,16 +216,29 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
         # Regular is the only face we addfont()'d. Good enough for the
         # banner without bundling another font.
         banner_kwargs["fontproperties"] = _CJK_FONT_PROPS
-    fig.text(0.5, 0.955, "緊急価格変動速報", **banner_kwargs)
+    fig.text(0.5, 0.955, banner_text, **banner_kwargs)
 
-    # Subtitle in the gap between subplot top (0.80) and banner (0.91).
-    # Centered at 0.855 keeps it clear of both.
+    # Ticker numbers in the banner's bottom-right corner (white, smaller).
     fig.text(
-        0.5, 0.855, subtitle,
-        ha="center", va="center",
-        fontsize=14, color="white", weight="bold",
+        0.985, 0.915, ticker,
+        ha="right", va="center",
+        fontsize=12.5, color="white", weight="bold",
         zorder=2,
     )
+
+    # JST fire-time caption in the chart's bottom-right corner — subtle so
+    # it reads as a timestamp watermark, not a data label.
+    if jst_caption:
+        caption_kwargs = dict(
+            ha="right", va="bottom",
+            fontsize=10, color="lightgray", alpha=0.75,
+            zorder=2,
+        )
+        if _CJK_FONT_PROPS is not None:
+            caption_kwargs["fontproperties"] = _CJK_FONT_PROPS
+        # y=0.165 keeps it inside the plot but clear of the x-axis tick
+        # labels (which sit just below the 0.10 subplot bottom).
+        fig.text(0.965, 0.165, jst_caption, **caption_kwargs)
 
     # Footer left: source attribution (subtle).
     fig.text(
