@@ -23,6 +23,7 @@ import matplotlib
 matplotlib.use("Agg")  # Headless backend — required in CI.
 
 import matplotlib.font_manager as _fm  # noqa: E402
+import matplotlib.image as _mpimg  # noqa: E402
 import matplotlib.patches as _mpatches  # noqa: E402
 import matplotlib.patheffects as _pe  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
@@ -70,6 +71,39 @@ _CANDLE_DOWN_RED = "#FF5252"
 # banner reads as more urgent than an ordinary down bar.
 _BANNER_UP_COLOR = _CANDLE_UP_GREEN
 _BANNER_DOWN_COLOR = "#C81414"
+
+# Official Bitcoin logo (orange disc + white ₿), bundled in the package
+# so rendering never depends on a font having U+20BF or on network at
+# render time. Public-domain mark. Loaded once at import; None if missing.
+_BTC_LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "bitcoin_logo.png")
+try:
+    _BTC_LOGO_IMG = (
+        _mpimg.imread(_BTC_LOGO_PATH) if os.path.exists(_BTC_LOGO_PATH) else None
+    )
+except Exception:  # pragma: no cover - corrupt/unreadable asset
+    _BTC_LOGO_IMG = None
+
+
+def _place_bitcoin_logo(
+    fig, *, cx_left: float = 0.018, cy: float = 0.95, height: float = 0.084
+) -> None:
+    """Overlay the official Bitcoin logo on the left of the banner.
+
+    Drawn on its own inset axes so the PNG's alpha (transparent corners
+    around the orange disc) composites cleanly over the red/green banner.
+    No-op if the bundled asset failed to load.
+    """
+    if _BTC_LOGO_IMG is None:
+        return
+    # Keep the logo square: the figure isn't, so scale width by H/W.
+    aspect = fig.get_figwidth() / fig.get_figheight()
+    width = height / aspect
+    ax = fig.add_axes(
+        [cx_left, cy - height / 2.0, width, height], zorder=5, frameon=False
+    )
+    ax.imshow(_BTC_LOGO_IMG, interpolation="antialiased")
+    ax.axis("off")
+
 
 # Alerts are timestamped JST so the user can correlate with their own
 # clock. UTC is correct internally but the chart caption shows JST.
@@ -221,6 +255,9 @@ def render_chart(spike: dict, price_data: dict) -> bytes:
         edgecolor="none",
         zorder=1,
     ))
+
+    # Official Bitcoin logo on the banner's left edge.
+    _place_bitcoin_logo(fig)
 
     # The 緊急〜速報 title is the single most prominent element on the
     # chart: large, heavy white text with a dark outline so it pops on
