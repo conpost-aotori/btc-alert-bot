@@ -1,22 +1,37 @@
 """Year-to-date-low milestone badge for alerts.
 
-When BTC prints a new year-to-date low, the FIRST alert that detects it
-gets a prominent badge line ("🔴 年初来最安値を更新（$XX,XXX）"). Subsequent
-alerts during the same downtrend do NOT repeat it (per the user's
-"一回目のみ"). The flag resets at the turn of the calendar year.
+When BTC prints a new year-to-date low, an alert gets a prominent badge
+line ("🔴 年初来最安値を更新（$XX,XXX）").
+
+Two guards keep it meaningful and non-spammy:
+  - Only from March onward (``YTD_BADGE_MIN_MONTH``). In Jan/Feb the
+    "year-to-date low" is trivially broken because barely any of the year
+    has elapsed, so badging then is noise.
+  - At most once per ~month (``YTD_BADGE_COOLDOWN_DAYS``). During a single
+    downtrend only the first break badges; a genuinely new low a month+
+    later can badge again. The running low is still *tracked* in Jan/Feb
+    and during the cooldown — only the badge text is withheld.
 
 State persisted in ``state.json``:
-  ytd_low_year      : int   — calendar year the low belongs to
-  ytd_low           : float — lowest USD price seen so far this year
-  ytd_low_announced : bool  — whether the badge has already fired this year
+  ytd_low_year       : int   — calendar year the running low belongs to
+  ytd_low            : float — lowest USD price seen so far this year
+  ytd_low_last_badge : str   — ISO ts of the last badge (cooldown anchor)
 """
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 log = logging.getLogger(__name__)
+
+# Don't badge before this month — "年初来最安値" is meaningless in Jan/Feb
+# when the year has barely started (any dip is a new "year-to-date low").
+YTD_BADGE_MIN_MONTH = 3
+
+# Minimum gap between YTD-low badges. Suppresses repeats during one
+# downtrend while still allowing a fresh badge for a new low a month later.
+YTD_BADGE_COOLDOWN_DAYS = 30
 
 
 def ytd_low_badge(
@@ -26,17 +41,20 @@ def ytd_low_badge(
     now: datetime | None = None,
     seed_year_low: Callable[[], float | None] | None = None,
 ) -> str:
-    """Return the YTD-low badge if this alert is the FIRST new YTD low, else "".
+    """Return the YTD-low badge when a new year-to-date low qualifies, else "".
 
-    Mutates ``state`` to track the running low + announced flag (caller is
-    expected to persist ``state`` afterwards).
+    Mutates ``state`` to track the running low + the last-badge timestamp
+    (caller persists ``state`` afterwards).
 
     Behavior:
-    - First run of a calendar year (or missing baseline): seed ``ytd_low``
-      from ``seed_year_low()`` (historical low) min the current price, and
-      return "" — there's no prior reference to "break" yet.
-    - Later: if price < ``ytd_low`` it's a new YTD low; update the low and,
-      if not yet announced this year, set the flag and return the badge.
+    - Year boundary / first run: re-seed ``ytd_low`` from ``seed_year_low()``
+      (historical low) capped at the current price. Never badges on a seed.
+      If the seed can't be fetched, leave unseeded and retry next call
+      (never seed from the current price alone — that would false-fire on
+      any tiny dip).
+    - New running low: always tracked. The badge text is returned only when
+      ``now.month >= YTD_BADGE_MIN_MONTH`` AND at least
+      ``YTD_BADGE_COOLDOWN_DAYS`` have passed since the last badge.
     """
     try:
         price = float(price_usd)
@@ -48,7 +66,10 @@ def ytd_low_badge(
     now = now or datetime.now(timezone.utc)
     year = now.year
 
-    # (Re)seed the baseline at a year boundary or on first ever run.
+    # Re-seed the running low at the calendar-year boundary so it tracks
+    # only the current year. The last-badge timestamp is deliberately NOT
+    # reset — the cooldown runs continuously across the boundary (and the
+    # month gate already blocks Jan/Feb).
     if state.get("ytd_low_year") != year or state.get("ytd_low") is None:
         seed: float | None = None
         if seed_year_low is not None:
@@ -56,11 +77,11 @@ def ytd_low_badge(
                 seed = seed_year_low()
             except Exception as e:  # pragma: no cover - network/parse guard
                 log.warning("YTD-low seed fetch failed: %s", e)
-        baseline = min(seed, price) if seed else price
+        if not seed:
+            return ""  # no reliable baseline yet — retry next call
         state["ytd_low_year"] = year
-        state["ytd_low"] = baseline
-        state["ytd_low_announced"] = False
-        log.info("YTD-low baseline seeded: $%,.0f (year %d)", baseline, year)
+        state["ytd_low"] = min(float(seed), price)
+        log.info("YTD-low baseline seeded: $%,.0f (year %d)", state["ytd_low"], year)
         return ""
 
     try:
@@ -69,13 +90,28 @@ def ytd_low_badge(
         state["ytd_low"] = price
         return ""
 
-    if price < ytd_low:
-        state["ytd_low"] = price  # always track the running low
-        if not state.get("ytd_low_announced"):
-            state["ytd_low_announced"] = True
-            log.info("YTD-low break — badging once: $%,.0f", price)
-            return f"🔴 年初来最安値を更新（${price:,.0f}）"
-    return ""
+    if price >= ytd_low:
+        return ""  # not a new low
+
+    # New running low — always track it, even in Jan/Feb or during cooldown.
+    state["ytd_low"] = price
+
+    # Gate the *badge*: only from March, and at most once per ~month.
+    if now.month < YTD_BADGE_MIN_MONTH:
+        return ""
+    last = state.get("ytd_low_last_badge")
+    if last:
+        try:
+            last_dt = datetime.fromisoformat(last)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            if now - last_dt < timedelta(days=YTD_BADGE_COOLDOWN_DAYS):
+                return ""  # within the 1-month cooldown
+        except Exception:
+            pass
+    state["ytd_low_last_badge"] = now.isoformat()
+    log.info("YTD-low break — badging ($%,.0f, month=%d)", price, now.month)
+    return f"🔴 年初来最安値を更新（${price:,.0f}）"
 
 
 def forced_ytd_spike(features: dict) -> dict:
@@ -106,7 +142,7 @@ def forced_ytd_spike(features: dict) -> dict:
         "direction": "down",
         "score": None,
         "reasons": [
-            "年初来最安値更新により強制発火（クールダウン無視・一度きり）",
+            "年初来最安値更新により強制発火（通常クールダウンを無視）",
             f"{window} {change:+.2f}%",
         ],
         "features": features or {},
