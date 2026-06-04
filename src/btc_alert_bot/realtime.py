@@ -45,6 +45,7 @@ from .chart import render_chart  # noqa: E402
 from .detector import (  # noqa: E402
     SpikeDetector,
     append_feature_history,
+    is_counter_trend_bounce,
     load_state,
     record_alert_in_state,
     save_state,
@@ -373,6 +374,24 @@ class RealtimeBot:
                 price_data["change_24h"],
             )
 
+            # Counter-trend bounce filter: a small move opposite to an
+            # established trend (e.g. a +0.7% 1m bounce mid-crash) would post
+            # a "暴騰" title over a crash-context summary. Drop it here, before
+            # the expensive factor / summary work.
+            if is_counter_trend_bounce(
+                direction, intra_pct,
+                price_data.get("change_1h", 0.0),
+                price_data.get("change_24h", 0.0),
+            ):
+                log.info(
+                    "Fast-track %s %+.3f%% suppressed: counter-trend bounce "
+                    "(1h %+.2f%%, 24h %+.2f%%)",
+                    window, intra_pct,
+                    price_data.get("change_1h", 0.0),
+                    price_data.get("change_24h", 0.0),
+                )
+                return
+
             factors = gather_factors(spike)
             similar = find_similar_alerts(HISTORY_DB_PATH, spike, limit=3)
             summary = summarize(price_data, spike, factors, similar_alerts=similar)
@@ -460,6 +479,23 @@ class RealtimeBot:
                 if features else
                 detector.check_legacy(price_data)
             )
+
+            # Counter-trend bounce filter: drop a small move opposite to an
+            # established trend (its summary would contradict the title).
+            # Uses the detector's own 1h return plus the 24h regime.
+            if spike is not None and is_counter_trend_bounce(
+                spike["direction"], spike["change"],
+                (features or {}).get("return_1h", price_data.get("change_1h", 0.0)),
+                price_data.get("change_24h", 0.0),
+            ):
+                log.info(
+                    "Composite %s %+.2f%% (%s) suppressed: counter-trend "
+                    "bounce (1h %+.2f%%, 24h %+.2f%%)",
+                    spike["window"], spike["change"], spike["direction"],
+                    (features or {}).get("return_1h", price_data.get("change_1h", 0.0)),
+                    price_data.get("change_24h", 0.0),
+                )
+                spike = None
 
             # Year-to-date-low milestone, evaluated BEFORE the suppression
             # gate so it can override it. The first time BTC breaks its YTD

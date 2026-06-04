@@ -92,6 +92,46 @@ HARD_FALLBACK_RETURN_2H_PCT = 1.5
 # such that 6/2's -3.06%/12h would just barely fire.
 HARD_FALLBACK_RETURN_12H_PCT = 3.0
 
+# ---------------------------------------------------------------------------
+# Counter-trend bounce filter
+# ---------------------------------------------------------------------------
+# A small move *opposite* to an established trend (e.g. a +0.7% 1m bounce
+# during a -2% / -6%(24h) crash) is noise, not a 暴騰 — and its summary
+# would talk about the crash, contradicting the "暴騰" title. We suppress
+# such moves unless they're large enough to signal a genuine reversal.
+COUNTER_TREND_1H_PCT = 1.0        # |1h| this big = an established short trend
+COUNTER_TREND_24H_PCT = 3.0       # |24h| this big = an established regime
+COUNTER_TREND_OVERRIDE_PCT = 1.5  # a move this big counts as a real reversal
+
+
+def is_counter_trend_bounce(
+    direction: str,
+    move_pct: float,
+    trend_1h_pct: float,
+    trend_24h_pct: float = 0.0,
+) -> bool:
+    """True if ``direction`` is a minor bounce against an established trend.
+
+    The move overrides (returns False) once it's big enough
+    (``COUNTER_TREND_OVERRIDE_PCT``) to be a real reversal worth alerting.
+    Symmetric: up-bounce in a downtrend AND down-dip in an uptrend.
+    """
+    try:
+        move = abs(float(move_pct))
+        t1h = float(trend_1h_pct)
+        t24 = float(trend_24h_pct)
+    except (TypeError, ValueError):
+        return False
+    if move >= COUNTER_TREND_OVERRIDE_PCT:
+        return False
+    downtrend = t1h <= -COUNTER_TREND_1H_PCT or t24 <= -COUNTER_TREND_24H_PCT
+    uptrend = t1h >= COUNTER_TREND_1H_PCT or t24 >= COUNTER_TREND_24H_PCT
+    if direction == "up" and downtrend:
+        return True
+    if direction == "down" and uptrend:
+        return True
+    return False
+
 # Cooldown: same direction is suppressed longer than a reversal.
 # Per-tier durations let the medium tier (15m) stay quieter than the
 # responsive short tier (1m/3m/5m) — the user reported 15m firing back-to-
