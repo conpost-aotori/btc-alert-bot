@@ -76,3 +76,38 @@ def ytd_low_badge(
             log.info("YTD-low break — badging once: $%,.0f", price)
             return f"🔴 年初来最安値を更新（${price:,.0f}）"
     return ""
+
+
+def forced_ytd_spike(features: dict) -> dict:
+    """Synthesize a DOWN spike for a YTD-low override fire.
+
+    Used when a first-time year-to-date-low break must fire even though the
+    normal detector returned None (cooldown-suppressed, or no window
+    threshold crossed). Picks the widest horizon with the largest move so
+    the alert still conveys magnitude. Direction is always ``down`` — a new
+    low is inherently a down event.
+    """
+    horizons = [
+        ("12h", "return_12h"), ("2h", "return_2h"), ("1h", "return_1h"),
+        ("15m", "return_15m"), ("5m", "return_5m"),
+    ]
+    window, change = "1h", 0.0
+    for w, key in horizons:
+        v = (features or {}).get(key)
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            continue
+        if abs(fv) > abs(change):
+            window, change = w, fv
+    return {
+        "window": window,
+        "change": change,
+        "direction": "down",
+        "score": None,
+        "reasons": [
+            "年初来最安値更新により強制発火（クールダウン無視・一度きり）",
+            f"{window} {change:+.2f}%",
+        ],
+        "features": features or {},
+    }

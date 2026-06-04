@@ -56,7 +56,7 @@ from .market import (  # noqa: E402
     fetch_window_ohlcv,
     fetch_year_low,
 )
-from .milestones import ytd_low_badge  # noqa: E402
+from .milestones import forced_ytd_spike, ytd_low_badge  # noqa: E402
 from .price import fetch_btc_price  # noqa: E402
 from .publishers import post_discord, post_x  # noqa: E402
 from .summarizer import summarize  # noqa: E402
@@ -461,6 +461,22 @@ class RealtimeBot:
                 detector.check_legacy(price_data)
             )
 
+            # Year-to-date-low milestone, evaluated BEFORE the suppression
+            # gate so it can override it. The first time BTC breaks its YTD
+            # low, fire EVEN IF normal detection was cooldown-suppressed (or
+            # crossed no window threshold) — but only once (per user
+            # "クールダウン中でも発火、一度きり"). ytd_low_badge() consumes the
+            # once-flag and returns the badge text only on that first break.
+            ytd_badge = ytd_low_badge(
+                state, price_data["price_usd"], seed_year_low=fetch_year_low
+            )
+            if ytd_badge and spike is None:
+                spike = forced_ytd_spike(features)
+                log.info(
+                    "YTD-low override: forcing alert through suppression "
+                    "(%s %+.2f%%)", spike["window"], spike["change"],
+                )
+
             if spike is None:
                 save_state(STATE_PATH, state)
                 return
@@ -475,12 +491,6 @@ class RealtimeBot:
             similar = find_similar_alerts(HISTORY_DB_PATH, spike, limit=3)
             summary = summarize(price_data, spike, factors, similar_alerts=similar)
 
-            # Year-to-date-low milestone: the first time BTC breaks its YTD
-            # low, prepend a one-time badge line (per user "一回目のみ").
-            # Mutates `state`; persisted by the save_state() at path end.
-            ytd_badge = ytd_low_badge(
-                state, price_data["price_usd"], seed_year_low=fetch_year_low
-            )
             if ytd_badge:
                 summary = f"{ytd_badge}\n{summary}"
                 log.info("YTD-low badge prepended: %s", ytd_badge)
