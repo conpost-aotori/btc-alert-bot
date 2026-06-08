@@ -101,6 +101,11 @@ HARD_FALLBACK_RETURN_12H_PCT = 3.0
 COUNTER_TREND_1H_PCT = 1.0        # |1h| this big = an established short trend
 COUNTER_TREND_24H_PCT = 3.0       # |24h| this big = an established regime
 COUNTER_TREND_OVERRIDE_PCT = 1.5  # a move this big counts as a real reversal
+# Momentum exception: a reversal that already has 1h momentum (the hour has
+# flipped to the new direction) counts as genuine at this smaller size —
+# catches news-driven reversals (e.g. a Strategy/Saylor buy turning the
+# market) early instead of waiting for the full 1.5% move.
+COUNTER_TREND_MOMENTUM_OVERRIDE_PCT = 1.0
 
 
 def is_counter_trend_bounce(
@@ -111,9 +116,12 @@ def is_counter_trend_bounce(
 ) -> bool:
     """True if ``direction`` is a minor bounce against an established trend.
 
-    The move overrides (returns False) once it's big enough
-    (``COUNTER_TREND_OVERRIDE_PCT``) to be a real reversal worth alerting.
-    Symmetric: up-bounce in a downtrend AND down-dip in an uptrend.
+    Returns False (i.e. fire) when the move is a genuine reversal:
+    - ``move >= COUNTER_TREND_OVERRIDE_PCT`` (1.5%) outright, OR
+    - ``move >= COUNTER_TREND_MOMENTUM_OVERRIDE_PCT`` (1.0%) AND the 1h has
+      already flipped to the move's direction (reversal momentum present,
+      not a dead-cat tick).
+    Symmetric: up-reversal in a downtrend AND down-reversal in an uptrend.
     """
     try:
         move = abs(float(move_pct))
@@ -122,12 +130,18 @@ def is_counter_trend_bounce(
     except (TypeError, ValueError):
         return False
     if move >= COUNTER_TREND_OVERRIDE_PCT:
-        return False
+        return False  # big enough to be a genuine reversal
     downtrend = t1h <= -COUNTER_TREND_1H_PCT or t24 <= -COUNTER_TREND_24H_PCT
     uptrend = t1h >= COUNTER_TREND_1H_PCT or t24 >= COUNTER_TREND_24H_PCT
     if direction == "up" and downtrend:
+        # 1h already positive (reversal underway) + clears momentum override
+        # → fire early; otherwise it's a dead-cat bounce → suppress.
+        if t1h > 0 and move >= COUNTER_TREND_MOMENTUM_OVERRIDE_PCT:
+            return False
         return True
     if direction == "down" and uptrend:
+        if t1h < 0 and move >= COUNTER_TREND_MOMENTUM_OVERRIDE_PCT:
+            return False
         return True
     return False
 
