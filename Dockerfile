@@ -1,4 +1,4 @@
-# Phase 3 (realtime / Oracle Cloud) container.
+# Phase 3 (realtime / AWS Lightsail) container.
 # Same code as Phase 1 cron mode — entry point is btc_alert_bot.realtime.
 FROM python:3.11-slim
 

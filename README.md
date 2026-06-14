@@ -174,9 +174,9 @@ python -m btc_alert_bot.history init                # 空 DB 作成
 - **類似パターン検索 (Phase 2.5)**: Euclidean距離で過去アラート top3 を Gemini に渡す
 - **Nitter RSS X監視**: opt-in、複数 instance fallback + sticky + 15s 総予算
 
-### Phase 3 (常時接続化、別運用)
-- **Oracle Cloud Always Free** に WebSocket 版をデプロイ可能 (詳細は `DEPLOYMENT.md`)
-- 5min cron 版と同一の検知/分析/配信コードを再利用
+### Phase 3 (常時接続化、現行の本番系)
+- **AWS Lightsail** に WebSocket 版をデプロイ (詳細は `DEPLOYMENT.md`)
+- 5min cron 版と同一の検知/分析/配信コードを再利用 (cron は現在 schedule 無効・手動のみ)
 - 5〜15分遅延 → 数秒以内の即時検知へ
 
 ## トラブルシューティング

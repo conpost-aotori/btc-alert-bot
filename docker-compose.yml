@@ -1,5 +1,5 @@
-# Phase 3: WebSocket realtime mode for Oracle Cloud Always Free (or any
-# always-on host). State persists under ./data via a bind mount so a
+# Phase 3: WebSocket realtime mode for AWS Lightsail (or any always-on
+# host). State persists under ./data via a bind mount so a
 # `docker compose down/up` cycle preserves cooldown + history.
 
 services:
@@ -21,7 +21,7 @@ services:
       - .env
     volumes:
       - ./data:/app/data
-    # Constrain resources so we stay well within the Always Free 24GB cap.
+    # Constrain resources to fit a small Lightsail plan (512MB-1GB RAM).
     mem_limit: 512m
     cpus: 0.5
     logging:

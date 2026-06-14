@@ -8,8 +8,8 @@ is reused unchanged — only the *trigger* differs:
     realtime.py : OKX WebSocket pushes each candle close, decision happens
                   in-process within seconds of the bar closing.
 
-Designed to run on Oracle Cloud Always Free (Ampere ARM, 4 cores / 24GB,
-permanent free tier) as a docker-compose service. See DEPLOYMENT.md.
+Designed to run on AWS Lightsail (or any always-on host) as a
+docker-compose service. See DEPLOYMENT.md.
 
 Why we still use REST for snapshots even in WS mode:
 - WS gives us *one* timely trigger (the 5m close) but features.py also
