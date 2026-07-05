@@ -1,9 +1,12 @@
 """高レベル API: translate / generate / generate_structured.
 
-フォールバック順は **Gemini -> OpenAI -> Grok -> DeepL** で固定。
+フォールバック順は **OpenAI -> Grok -> Gemini -> DeepL** で固定。
+OpenAI を主、Gemini はセーフティネット (OpenAI と Grok が両方失敗したときのみ)。
+Gemini 2.5 系の thinking モードによる途中切れを避けるため、通常運用では
+OpenAI を優先する方針。
 
 DeepL は直訳しかできない (生成プロンプトに従えない) ので、``generate`` と
-``generate_structured`` では除外され、LLM 3 段 (Gemini→OpenAI→Grok) のみ。
+``generate_structured`` では除外され、LLM 3 段 (OpenAI→Grok→Gemini) のみ。
 """
 from __future__ import annotations
 
@@ -41,7 +44,7 @@ def translate(
     openai_api_key: str | None = None,
     deepl_api_key: str | None = None,
 ) -> str | None:
-    """直訳。Gemini → OpenAI → Grok → DeepL の順に試行。全段失敗で None。
+    """直訳。OpenAI → Grok → Gemini → DeepL の順に試行。全段失敗で None。
 
     Args:
         text: 翻訳元テキスト。
@@ -58,23 +61,23 @@ def translate(
     if style_hint:
         system += "\n- " + style_hint
 
-    # 1. Gemini
-    out = providers.gemini_generate_text(
-        system, text, api_key=gemini_api_key, temperature=0.2,
-    )
-    if out:
-        return out
-
-    # 2. OpenAI
+    # 1. OpenAI (主)
     out = providers.openai_generate_text(
         system, text, api_key=openai_api_key, temperature=0.2,
     )
     if out:
         return out
 
-    # 3. Grok
+    # 2. Grok
     out = providers.grok_generate_text(
         system, text, api_key=xai_api_key, temperature=0.2,
+    )
+    if out:
+        return out
+
+    # 3. Gemini (セーフティネット)
+    out = providers.gemini_generate_text(
+        system, text, api_key=gemini_api_key, temperature=0.2,
     )
     if out:
         return out
@@ -89,7 +92,7 @@ def translate(
     if out:
         return out
 
-    log.error("translate: all 4 providers failed (gemini/openai/grok/deepl)")
+    log.error("translate: all 4 providers failed (openai/grok/gemini/deepl)")
     return None
 
 
@@ -126,7 +129,7 @@ def translate_batch(
 
 
 # ---------------------------------------------------------------------------
-# generate — プロンプト生成 (Gemini → Grok のみ)
+# generate — プロンプト生成 (OpenAI → Grok → Gemini)
 # ---------------------------------------------------------------------------
 
 def generate(
@@ -139,16 +142,11 @@ def generate(
     xai_api_key: str | None = None,
     openai_api_key: str | None = None,
 ) -> str | None:
-    """プロンプトに基づくテキスト生成。Gemini → OpenAI → Grok の順に試行。
+    """プロンプトに基づくテキスト生成。OpenAI → Grok → Gemini の順に試行。
 
     DeepL は使わない (生成不可)。3 段とも失敗で None。
+    Gemini は最後尾のセーフティネット (OpenAI と Grok が両方失敗時のみ)。
     """
-    out = providers.gemini_generate_text(
-        system, user,
-        api_key=gemini_api_key, max_tokens=max_tokens, temperature=temperature,
-    )
-    if out:
-        return out
     out = providers.openai_generate_text(
         system, user,
         api_key=openai_api_key, max_tokens=max_tokens, temperature=temperature,
@@ -161,7 +159,13 @@ def generate(
     )
     if out:
         return out
-    log.error("generate: all 3 LLM providers failed (gemini/openai/grok)")
+    out = providers.gemini_generate_text(
+        system, user,
+        api_key=gemini_api_key, max_tokens=max_tokens, temperature=temperature,
+    )
+    if out:
+        return out
+    log.error("generate: all 3 LLM providers failed (openai/grok/gemini)")
     return None
 
 
@@ -176,13 +180,7 @@ def generate_structured(
     xai_api_key: str | None = None,
     openai_api_key: str | None = None,
 ) -> Any | None:
-    """Pydantic schema を強制した構造化出力。Gemini → OpenAI → Grok の順に試行。"""
-    out = providers.gemini_generate_structured(
-        system, user, schema,
-        api_key=gemini_api_key, max_tokens=max_tokens, temperature=temperature,
-    )
-    if out is not None:
-        return out
+    """Pydantic schema を強制した構造化出力。OpenAI → Grok → Gemini の順に試行。"""
     out = providers.openai_generate_structured(
         system, user, schema,
         api_key=openai_api_key, max_tokens=max_tokens, temperature=temperature,
@@ -195,5 +193,11 @@ def generate_structured(
     )
     if out is not None:
         return out
-    log.error("generate_structured: all 3 LLM providers failed (gemini/openai/grok)")
+    out = providers.gemini_generate_structured(
+        system, user, schema,
+        api_key=gemini_api_key, max_tokens=max_tokens, temperature=temperature,
+    )
+    if out is not None:
+        return out
+    log.error("generate_structured: all 3 LLM providers failed (openai/grok/gemini)")
     return None
