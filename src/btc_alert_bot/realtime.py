@@ -65,10 +65,11 @@ from .milestones import (  # noqa: E402
     mark_psych_badged,
     mark_ytd_badged,
     psych_level_badge,
+    ytd_commit_decision,
     ytd_low_badge,
 )
 from .price import fetch_btc_price  # noqa: E402
-from .publishers import post_discord, post_x  # noqa: E402
+from .publishers import post_discord, post_x, x_configured  # noqa: E402
 from .summarizer import summarize  # noqa: E402
 
 logging.basicConfig(
@@ -460,6 +461,11 @@ class RealtimeBot:
                 os.getenv("ENABLE_X_YTD_LOW", "false").lower() == "true"
                 and bool(ytd_badge)
             )
+            if force_x and not x_configured():
+                log.warning(
+                    "ENABLE_X_YTD_LOW is set but X API keys are missing — "
+                    "the YTD-low emergency will reach Discord only"
+                )
             d_disc = d_x = False
             if dry_run:
                 log.info("[DRY_RUN] Skipping actual posts")
@@ -474,15 +480,21 @@ class RealtimeBot:
                         summary, price_data, spike, chart_png=chart_png
                     )
 
-            record_alert(
-                HISTORY_DB_PATH,
-                price_data=price_data,
-                spike=spike,
-                factors=factors,
-                summary=summary,
-                delivered_discord=d_disc,
-                delivered_x=d_x,
-            )
+            try:
+                record_alert(
+                    HISTORY_DB_PATH,
+                    price_data=price_data,
+                    spike=spike,
+                    factors=factors,
+                    summary=summary,
+                    delivered_discord=d_disc,
+                    delivered_x=d_x,
+                )
+            except Exception:
+                # A history-DB failure (e.g. locked sqlite) must not abort
+                # the milestone commit below — that would re-post an already
+                # delivered YTD/psych bulletin on the next candle.
+                log.exception("record_alert failed — continuing")
 
             if d_disc or d_x:
                 record_alert_in_state(state, spike, price_data)
@@ -492,7 +504,13 @@ class RealtimeBot:
                 # DRY_RUN so a dry validation pass can't burn the YTD_ONESHOT
                 # latch (which would suppress the next real break).
                 if not dry_run:
-                    if ytd_badge:
+                    # YTD badge: when the X emergency is armed AND X keys
+                    # exist, X delivery is required to commit — a Discord-
+                    # only success keeps the badge pending (retries next
+                    # candle) so the one-shot isn't burned without a tweet.
+                    if ytd_badge and ytd_commit_decision(
+                        state, force_x, x_configured(), d_disc, d_x
+                    ):
                         mark_ytd_badged(state, price_data["price_usd"])
                     if psych_badge:
                         mark_psych_badged(state, price_data["price_usd"])
@@ -637,6 +655,11 @@ class RealtimeBot:
                 os.getenv("ENABLE_X_YTD_LOW", "false").lower() == "true"
                 and bool(ytd_badge)
             )
+            if force_x and not x_configured():
+                log.warning(
+                    "ENABLE_X_YTD_LOW is set but X API keys are missing — "
+                    "the YTD-low emergency will reach Discord only"
+                )
             d_disc = d_x = False
             if dry_run:
                 log.info("[DRY_RUN] Skipping actual posts")
@@ -651,15 +674,21 @@ class RealtimeBot:
                         summary, price_data, spike, chart_png=chart_png
                     )
 
-            record_alert(
-                HISTORY_DB_PATH,
-                price_data=price_data,
-                spike=spike,
-                factors=factors,
-                summary=summary,
-                delivered_discord=d_disc,
-                delivered_x=d_x,
-            )
+            try:
+                record_alert(
+                    HISTORY_DB_PATH,
+                    price_data=price_data,
+                    spike=spike,
+                    factors=factors,
+                    summary=summary,
+                    delivered_discord=d_disc,
+                    delivered_x=d_x,
+                )
+            except Exception:
+                # A history-DB failure (e.g. locked sqlite) must not abort
+                # the milestone commit below — that would re-post an already
+                # delivered YTD/psych bulletin on the next candle.
+                log.exception("record_alert failed — continuing")
 
             if d_disc or d_x:
                 record_alert_in_state(state, spike, price_data)
@@ -669,7 +698,13 @@ class RealtimeBot:
                 # DRY_RUN so a dry validation pass can't burn the YTD_ONESHOT
                 # latch (which would suppress the next real break).
                 if not dry_run:
-                    if ytd_badge:
+                    # YTD badge: when the X emergency is armed AND X keys
+                    # exist, X delivery is required to commit — a Discord-
+                    # only success keeps the badge pending (retries next
+                    # candle) so the one-shot isn't burned without a tweet.
+                    if ytd_badge and ytd_commit_decision(
+                        state, force_x, x_configured(), d_disc, d_x
+                    ):
                         mark_ytd_badged(state, price_data["price_usd"])
                     if psych_badge:
                         mark_psych_badged(state, price_data["price_usd"])

@@ -72,7 +72,10 @@ ADAPTIVE_REF_ATR_PCT_15M = 0.10
 
 # "Always alert" overrides — catch obvious moves even with thin history.
 # Each hard floor sits ABOVE the corresponding composite-gate base so a
-# threshold-only path can't quietly bypass the composite tightening.
+# threshold-only path can't quietly bypass the composite tightening. In
+# high-vol regimes the 5m/15m floors additionally scale UP with ATR
+# (scale-up-only, see check_composite) so the invariant holds even when
+# the adaptive composite floor reaches its 2.0x ceiling.
 # 24h was removed at the user's request (no need to alert on multi-day moves).
 HARD_FALLBACK_RETURN_5M_PCT = 1.0
 HARD_FALLBACK_RETURN_15M_PCT = 2.0
@@ -267,8 +270,11 @@ WINDOW_RANK: dict[str, int] = {
 }
 
 # Ring buffer: how many feature snapshots to retain in state.json.
-# ~48h of 1-minute features (was *2 of HIST_LOOKBACK_BARS when sampling
-# was 5-min; same multiplier still keeps 48h after 1m switch).
+# NOTE actual cadence: entries are deduped by the 5m-bar ts (see
+# append_feature_history), so despite the 1-minute detection trigger the
+# buffer gains ~1 entry per 5 minutes → 2880 entries ≈ 10 days, not 48h.
+# That is also the transition window over which z-score baselines absorb
+# any change in feature semantics (e.g. the 2026-07-06 rolling-returns fix).
 FEATURE_HISTORY_MAX = HIST_LOOKBACK_BARS * 2
 
 
@@ -444,12 +450,37 @@ class SpikeDetector:
         # --- 3. Hard fallback first (catches obvious moves regardless of score).
         #        We probe in tier-priority order: short windows first, then
         #        medium, then long. 24h+ are intentionally not considered.
-        if abs(return_5m) >= HARD_FALLBACK_RETURN_5M_PCT * tf:
+        #
+        # The short-window (5m/15m) hard floors scale UP with the vol regime
+        # (never below base): rolling returns make trailing 1%/5m moves far
+        # more common during sustained high-vol crashes, where a fixed 1.0%
+        # floor would sit at the adaptive composite ceiling and bypass its
+        # confirm gates. Scale-up-only keeps quiet/normal regimes identical.
+        hard_5m = max(
+            HARD_FALLBACK_RETURN_5M_PCT,
+            adaptive_return_floor(
+                history, HARD_FALLBACK_RETURN_5M_PCT,
+                reference_pct=ADAPTIVE_REF_ATR_PCT_5M,
+            ),
+        )
+        hard_15m = max(
+            HARD_FALLBACK_RETURN_15M_PCT,
+            adaptive_return_floor(
+                history, HARD_FALLBACK_RETURN_15M_PCT,
+                reference_pct=ADAPTIVE_REF_ATR_PCT_15M,
+            ),
+        )
+        if abs(return_5m) >= hard_5m * tf:
             fired_window = "5m"
             fired_change = return_5m
             fired_direction = "up" if return_5m >= 0 else "down"
             reasons.append(f"5m move {return_5m:+.2f}% over hard floor")
-        elif abs(return_15m) >= HARD_FALLBACK_RETURN_15M_PCT * tf:
+            # A grind usually crosses the 15m floor too, with a much bigger
+            # cumulative move — surface it so the summary conveys the full
+            # story instead of just the (smallest) trigger window.
+            if abs(return_15m) >= hard_15m * tf:
+                reasons.append(f"15m cumulative {return_15m:+.2f}%")
+        elif abs(return_15m) >= hard_15m * tf:
             fired_window = "15m"
             fired_change = return_15m
             fired_direction = "up" if return_15m >= 0 else "down"

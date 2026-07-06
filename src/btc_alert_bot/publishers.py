@@ -303,6 +303,17 @@ def post_discord(
         return False
 
 
+def x_configured() -> bool:
+    """True when all four X API keys are present, i.e. post_x can actually
+    post (it silently no-ops to False when any key is missing). Used by the
+    YTD-low emergency path to decide whether X delivery can be REQUIRED
+    before committing the one-shot latch."""
+    return all(
+        os.getenv(k)
+        for k in ("X_API_KEY", "X_API_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_SECRET")
+    )
+
+
 def post_x(
     summary: str,
     price_data: dict,  # noqa: ARG001 — present for parity with post_discord

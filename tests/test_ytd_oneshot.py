@@ -19,7 +19,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from btc_alert_bot.milestones import mark_ytd_badged, ytd_low_badge  # noqa: E402
+from btc_alert_bot.milestones import (  # noqa: E402
+    YTD_X_RETRY_MAX,
+    mark_ytd_badged,
+    ytd_commit_decision,
+    ytd_commit_ok,
+    ytd_low_badge,
+)
 
 _VARS = ("YTD_ONESHOT",)
 NOW = datetime(2026, 6, 30, 13, 0, tzinfo=timezone.utc)  # June → past the March gate
@@ -83,6 +89,76 @@ def test_no_badge_when_not_a_new_low():
     with env(YTD_ONESHOT="true"):
         state = _seeded_state(60000.0)
         assert ytd_low_badge(state, 61000.0, now=NOW) == ""
+
+
+def test_ytd_commit_ok_truth_table():
+    """X armed + configured → X delivery REQUIRED to commit (Discord-only
+    success must NOT burn the one-shot). Otherwise legacy: any channel."""
+    # (force_x, x_ready, d_disc, d_x) -> expected
+    cases = [
+        # X armed & keys present: only d_x commits
+        ((True, True, True, False), False),   # Discord-only → keep pending
+        ((True, True, False, True), True),
+        ((True, True, True, True), True),
+        ((True, True, False, False), False),
+        # X armed but keys missing (misconfig): legacy — don't loop forever
+        ((True, False, True, False), True),
+        ((True, False, False, False), False),
+        # X not armed: legacy
+        ((False, True, True, False), True),
+        ((False, False, False, True), True),
+        ((False, False, False, False), False),
+    ]
+    for args, want in cases:
+        got = ytd_commit_ok(*args)
+        assert got is want, f"ytd_commit_ok{args} = {got}, want {want}"
+
+
+def test_ytd_commit_decision_retry_cap():
+    """X required + failing while Discord succeeds → bounded retries, then
+    fall back to committing on the Discord success (dead keys / rate cap)."""
+    st = {}
+    for i in range(1, YTD_X_RETRY_MAX):
+        assert ytd_commit_decision(st, True, True, True, False) is False
+        assert st["ytd_x_retry_count"] == i
+    assert ytd_commit_decision(st, True, True, True, False) is True  # cap hit
+    assert "ytd_x_retry_count" not in st  # counter cleared
+
+
+def test_ytd_commit_decision_resets_on_success():
+    st = {"ytd_x_retry_count": 3}
+    assert ytd_commit_decision(st, True, True, False, True) is True
+    assert "ytd_x_retry_count" not in st
+
+
+def test_ytd_commit_decision_total_failure_not_counted():
+    # Neither channel delivered: existing 絶対投稿 retry, no counter (no spam).
+    st = {}
+    assert ytd_commit_decision(st, True, True, False, False) is False
+    assert "ytd_x_retry_count" not in st
+
+
+def test_x_configured_empty_string_not_configured():
+    try:
+        from btc_alert_bot.publishers import x_configured
+    except ImportError:  # publisher deps (tweepy) absent locally — container has them
+        print("        (skipped: publishers deps not installed)")
+        return
+    keys = ("X_API_KEY", "X_API_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_SECRET")
+    saved = {k: os.environ.get(k) for k in keys}
+    try:
+        for k in keys:
+            os.environ[k] = "v"
+        os.environ["X_API_KEY"] = ""   # present but empty = NOT configured
+        assert x_configured() is False
+        os.environ["X_API_KEY"] = "v"
+        assert x_configured() is True
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 def _run_all():

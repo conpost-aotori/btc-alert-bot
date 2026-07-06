@@ -205,6 +205,67 @@ def ytd_low_badge(
     return f"🔴 年初来最安値を更新（${price:,.0f}）"
 
 
+# Max consecutive candles the X-required commit may retry while X delivery
+# keeps failing but Discord succeeds. Keys can be present yet dead (revoked
+# token, X free-tier 500 posts/month cap) — unbounded ~1/min Discord+LLM+X
+# retries during a crash would be far worse than a missed tweet.
+YTD_X_RETRY_MAX = 5
+
+
+def ytd_commit_decision(
+    state: dict, force_x: bool, x_ready: bool, d_disc: bool, d_x: bool
+) -> bool:
+    """``ytd_commit_ok`` with a persistent, bounded retry counter.
+
+    When X delivery is required (armed + keys present) but X keeps failing
+    while Discord succeeds, allow up to ``YTD_X_RETRY_MAX`` retry candles,
+    then log an error and fall back to committing on the Discord success so
+    the bulletin doesn't loop forever. The counter lives in ``state``
+    (persisted by the caller) and resets on any commit.
+    """
+    if ytd_commit_ok(force_x, x_ready, d_disc, d_x):
+        state.pop("ytd_x_retry_count", None)
+        return True
+    if force_x and x_ready and d_disc and not d_x:
+        try:
+            n = int(state.get("ytd_x_retry_count", 0) or 0) + 1
+        except (TypeError, ValueError):
+            n = 1
+        state["ytd_x_retry_count"] = n
+        if n >= YTD_X_RETRY_MAX:
+            log.error(
+                "YTD-low X delivery failed %d times — committing on the "
+                "Discord success alone (check X keys / monthly post cap)", n,
+            )
+            state.pop("ytd_x_retry_count", None)
+            return True
+        log.warning(
+            "YTD-low X delivery failed (attempt %d/%d) — badge stays "
+            "pending, will retry next candle", n, YTD_X_RETRY_MAX,
+        )
+    return False
+
+
+def ytd_commit_ok(
+    force_x: bool, x_ready: bool, d_disc: bool, d_x: bool
+) -> bool:
+    """Whether the YTD-low badge may be committed (one-shot latch + cooldown
+    stamp) after a post attempt.
+
+    When the X emergency path is armed (``ENABLE_X_YTD_LOW``) AND X is
+    actually configured, **X delivery is required**: a Discord-only success
+    must NOT burn the ``YTD_ONESHOT`` latch, or the single X shot would be
+    consumed without a tweet. The badge then stays pending and the forced
+    fire retries on the next candle (Discord may repeat until X succeeds —
+    X is the deliverable). When X isn't armed, or is armed but has no keys
+    (misconfiguration), any successful channel commits (legacy behavior),
+    so the bulletin doesn't loop forever on a channel that can never work.
+    """
+    if force_x and x_ready:
+        return d_x
+    return d_disc or d_x
+
+
 def mark_ytd_badged(state: dict, price_usd: float, *, now: datetime | None = None) -> None:
     """Commit a successfully-posted YTD-low badge: advance the low + stamp the
     cooldown anchor. Called by the alert path ONLY after a successful post, so

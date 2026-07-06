@@ -21,9 +21,10 @@ log = logging.getLogger(__name__)
 ATR_PERIOD = 14
 
 # How many recent samples we use for robust statistics. Larger windows are
-# stabler but lag regime changes; ~3 days of 5min bars is a good middle.
-# 24h of features at 1-minute sampling cadence (was 288 when composite
-# ran every 5min; bumped 5× after switching to per-1m composite trigger).
+# stabler but lag regime changes. NOTE actual cadence: feature snapshots
+# are deduped by the 5m-bar ts in append_feature_history, so the buffer
+# gains ~1 entry per 5 minutes regardless of the 1-minute detection
+# trigger — 1440 entries ≈ 5 days of lookback.
 HIST_LOOKBACK_BARS = 1440
 
 
@@ -103,6 +104,47 @@ def compute_returns_pct(closes: list[float], lag_bars: int) -> float:
     return (closes[-1] / base - 1.0) * 100
 
 
+# Minimum 1m bars for the rolling short-horizon returns: a 15-bar lookback
+# plus the live bar.
+_ROLLING_MIN_1M_BARS = 16
+
+
+def _short_horizon_returns(
+    snapshot: dict, closes_5m: list[float], live_close: float
+) -> tuple[float, float]:
+    """``(return_5m, return_15m)`` as TRUE rolling windows from 1m klines.
+
+    The legacy 5m-kline computation anchors to bar boundaries: right after
+    each 5m boundary the measured "5m return" resets toward zero, so a
+    steady grind (e.g. 2026-07-06's -0.2%/min sell-off, real rolling 5m
+    ≈ -1.1%) never crosses the 1.0% hard floor — the bot logged
+    ``5m=+0.02%`` while the market fell 0.9% in the trailing 5 minutes.
+    1m closes fix the anchor: last close vs 5/15 bars back is always a
+    constant-width window regardless of boundary phase.
+
+    Falls back to the legacy 5m-anchored computation when 1m data is
+    missing or short (fetch failure) — degraded, never dark.
+    """
+    klines_1m = snapshot.get("klines_1m") or []
+    # The last 1m bar is usually IN-PROGRESS (near-zero elapsed time in WS
+    # mode, where detection runs right after a close). It carries the live
+    # price but consumes a lag slot without contributing elapsed movement —
+    # without correction "return_5m" would only span ~4 minutes. Bump the
+    # lag by 1 when the last bar is unconfirmed so the window is a true
+    # >=5/15 minutes.
+    bump = 0 if not klines_1m or klines_1m[-1].get("confirmed", True) else 1
+    if len(klines_1m) >= _ROLLING_MIN_1M_BARS + bump:
+        closes_1m = [c["close"] for c in klines_1m]
+        return (
+            compute_returns_pct(closes_1m, 5 + bump),
+            compute_returns_pct(closes_1m, 15 + bump),
+        )
+    return (
+        compute_returns_pct([*closes_5m, live_close], 1),
+        compute_returns_pct([*closes_5m, live_close], 3),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Headline features
 # ---------------------------------------------------------------------------
@@ -135,9 +177,11 @@ def compute_market_features(snapshot: dict, state: dict | None = None) -> dict:
     # ATR as a percentage of price — comparable across regimes.
     atr_pct = (atr_now / close_now * 100) if close_now > 0 else 0.0
 
-    # Returns on multiple horizons (in 5min-bar units: 3=15m, 12=1h, 24=2h, 288=24h).
-    return_5m = compute_returns_pct([*closes, live_close], 1)
-    return_15m = compute_returns_pct([*closes, live_close], 3)
+    # Short horizons (5m/15m): rolling windows from 1m klines when available
+    # (see _short_horizon_returns — fixes the bar-boundary anchoring blind
+    # spot). Longer horizons stay on 5m bars: a ≤5min anchor offset is
+    # negligible against 1h+ windows and 1m history that deep isn't fetched.
+    return_5m, return_15m = _short_horizon_returns(snapshot, closes, live_close)
     return_1h = compute_returns_pct([*closes, live_close], 12)
     # 2h horizon catches "slow grind" sell-offs/rallies that never produce
     # a sharp 1h move but accumulate meaningfully — observed 6/1 BTC moved
@@ -150,7 +194,9 @@ def compute_market_features(snapshot: dict, state: dict | None = None) -> dict:
     return_24h = compute_returns_pct([*closes, live_close], 288) if len(closes) >= 288 else 0.0
 
     # |return_15m| normalized by ATR — "how big is this move vs typical 15m move?".
-    # ATR is per-bar, so for 3-bar returns we scale by sqrt(3).
+    # ATR is per-5m-bar; a 15-minute window spans 3 such bars, hence the
+    # sqrt(3) diffusion scaling (independent of whether return_15m itself
+    # came from rolling 1m closes or the 5m fallback).
     move_per_atr = (
         abs(return_15m) / (atr_pct * math.sqrt(3))
         if atr_pct > 0 else 0.0

@@ -293,6 +293,20 @@ def fetch_market_snapshot() -> dict:
     simpler CoinGecko-only path.
     """
     klines_5m = fetch_klines(bar="5m", limit=200)
+    # 1m klines let features.py compute return_5m / return_15m as TRUE
+    # rolling windows. The 5m-kline computation anchors to bar boundaries
+    # (the "5m return" resets toward zero right after each boundary), which
+    # blinded the detector to the steady -0.2%/min grind on 2026-07-06.
+    # Isolated failure: this fetch degrading must not take down the whole
+    # snapshot — features.py falls back to the 5m-anchored computation.
+    try:
+        klines_1m = fetch_klines(bar="1m", limit=20)
+    except Exception as e:
+        log.warning(
+            "1m kline fetch failed (%s) — short returns fall back to "
+            "5m-bar anchoring", e,
+        )
+        klines_1m = []
     ticker = fetch_ticker()
     oi = fetch_open_interest() or {}
     funding_history = fetch_funding_history(limit=30)
@@ -301,6 +315,7 @@ def fetch_market_snapshot() -> dict:
     # Surface a flat dict shape compatible with the existing features.py.
     return {
         "klines_5m": klines_5m,
+        "klines_1m": klines_1m,
         "ticker": {
             **ticker,
             "open_interest_btc": oi.get("oi_btc", 0.0),
