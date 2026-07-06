@@ -127,8 +127,19 @@ class RealtimeBot:
     def __init__(self) -> None:
         self.shutdown = asyncio.Event()
         # Single in-flight detection at a time — fire-and-forget so we
-        # never block the WS receive/keepalive loop.
+        # never block the WS receive/keepalive loop. Both pipelines do a
+        # non-atomic load/mutate/save of state.json (+ history.sqlite
+        # writes), so two pipelines must never actually run concurrently —
+        # see detector.load_state/save_state. Kept serialized on purpose.
         self._detection_task: asyncio.Task | None = None
+        # A candle that arrives while _detection_task is still running is
+        # NOT dropped: it's stashed here and replayed the instant the
+        # in-flight task finishes (_on_detection_done), so a genuine big
+        # move can't be silently lost to the ~0.5-1s overlap window where
+        # a 1m and 3m candle close at the same instant. Fast-track (a
+        # real move) takes priority over a queued composite retry.
+        self._pending_fast_track: tuple[str, float, float] | None = None  # (window, intra_pct, close_p)
+        self._pending_composite = False
         # Watchdog liveness counter (monotonic seconds).
         self.last_activity = time.monotonic()
 
@@ -251,16 +262,9 @@ class RealtimeBot:
         if not confirmed:
             return  # mid-bar update — wait for the close
 
-        # Single in-flight detection — same backpressure rule for all
-        # channels so we never have two pipelines running at once.
-        if self._detection_task and not self._detection_task.done():
-            log.warning(
-                "Previous detection still running; skipping this %s candle",
-                channel,
-            )
-            return
-
-        # Parse intra-bar move (needed for fast-track check on both 1m/3m).
+        # Parse intra-bar move (needed for fast-track check on both 1m/3m)
+        # BEFORE the in-flight check, so a busy pipeline can still tell
+        # whether the skipped candle mattered enough to queue for replay.
         try:
             open_p = float(latest[1])
             close_p = float(latest[4])
@@ -278,16 +282,40 @@ class RealtimeBot:
         # Event-mode (e.g. FOMC window) lowers the fast-track floor; the
         # factor is 1.0 outside any configured window → unchanged normally.
         threshold *= event_mode.threshold_factor(_now_iso())
+        is_fast_track = abs(intra_pct) >= threshold
+
+        # Single in-flight detection — same backpressure rule for all
+        # channels so we never have two pipelines running at once (see
+        # __init__). Queue this candle for replay instead of dropping it.
+        if self._detection_task and not self._detection_task.done():
+            if is_fast_track:
+                self._pending_fast_track = (window, intra_pct, close_p)
+                log.warning(
+                    "Previous detection still running; %s fast-track "
+                    "(%+.3f%%) queued for replay",
+                    window, intra_pct,
+                )
+            elif channel == "candle1m":
+                self._pending_composite = True
+                log.warning(
+                    "Previous detection still running; composite check "
+                    "queued for replay"
+                )
+            else:
+                log.warning(
+                    "Previous detection still running; skipping this %s "
+                    "candle (not fast-track)",
+                    channel,
+                )
+            return
 
         # Fast-track wins if the intra-bar move clearly crossed its floor.
-        if abs(intra_pct) >= threshold:
+        if is_fast_track:
             log.info(
                 "%s FAST-TRACK fired: open=%.2f close=%.2f intra=%+.3f%%",
                 window, open_p, close_p, intra_pct,
             )
-            self._detection_task = asyncio.create_task(
-                self._run_fast_track_async(intra_pct, close_p, window)
-            )
+            self._launch_fast_track(intra_pct, close_p, window)
             return
 
         # Otherwise: on 1m close only, run the full composite scoring path
@@ -299,7 +327,41 @@ class RealtimeBot:
             "1m candle closed (composite): ts=%s close=%s intra=%+.3f%%",
             latest[0], latest[4], intra_pct,
         )
-        self._detection_task = asyncio.create_task(self._run_detection_async())
+        self._launch_composite()
+
+    # ------------------------------------------------------------------
+    # Task launch + replay bookkeeping
+    # ------------------------------------------------------------------
+
+    def _launch_fast_track(self, intra_pct: float, close_p: float, window: str) -> None:
+        self._pending_fast_track = None
+        task = asyncio.create_task(self._run_fast_track_async(intra_pct, close_p, window))
+        task.add_done_callback(self._on_detection_done)
+        self._detection_task = task
+
+    def _launch_composite(self) -> None:
+        self._pending_composite = False
+        task = asyncio.create_task(self._run_detection_async())
+        task.add_done_callback(self._on_detection_done)
+        self._detection_task = task
+
+    def _on_detection_done(self, task: asyncio.Task) -> None:
+        """Replay a candle that arrived while ``task`` was still running.
+
+        Only acts if ``task`` is still the current ``_detection_task`` — if
+        a fresh (non-queued) candle already launched a newer task in the
+        meantime, that task's own completion will handle any replay, so
+        this stale callback is a no-op.
+        """
+        if task is not self._detection_task or self.shutdown.is_set():
+            return
+        if self._pending_fast_track is not None:
+            window, intra_pct, close_p = self._pending_fast_track
+            log.info("Replaying queued %s fast-track (%+.3f%%)", window, intra_pct)
+            self._launch_fast_track(intra_pct, close_p, window)
+        elif self._pending_composite:
+            log.info("Replaying queued composite check")
+            self._launch_composite()
 
     # ------------------------------------------------------------------
     # Detection pipeline (mirrors main.py, sync)
