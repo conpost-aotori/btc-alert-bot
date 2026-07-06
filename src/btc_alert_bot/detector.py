@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import event_mode
@@ -111,6 +111,58 @@ COUNTER_TREND_OVERRIDE_PCT = 1.5  # a move this big counts as a real reversal
 # market) early instead of waiting for the full 1.5% move.
 COUNTER_TREND_MOMENTUM_OVERRIDE_PCT = 1.0
 
+# ---------------------------------------------------------------------------
+# Bear zone (安値圏) — price near the tracked year-to-date low
+# ---------------------------------------------------------------------------
+# The 1h/24h trend gates above MISS the multi-week bear regime: right after
+# a bottom the 24h flips positive, so on 2026-07-01 (new YTD low $57.9k)
+# five +2%-class dead-cat bounces fired as 暴騰 alerts with t24 at +1.8 to
+# +3.8%. When price sits within BEAR_ZONE_PROX_PCT above the YTD low we
+# treat the regime as DOWN regardless of the short trends: up-moves need
+# BEAR_ZONE_OVERRIDE_X times the normal reversal override to fire, the
+# momentum exception is disabled (bounces routinely flip the 1h positive),
+# and down-moves are never counter-trend-suppressed. Self-disarming: once
+# price recovers past the zone ceiling, behavior returns to normal.
+BEAR_ZONE_PROX_PCT = 8.0
+# INVARIANT: COUNTER_TREND_OVERRIDE_PCT * BEAR_ZONE_OVERRIDE_X must stay
+# <= HARD_FALLBACK_RETURN_12H_PCT (currently 1.5 * 2.0 = 3.0 == 3.0), so
+# the 12h status report remains the guaranteed recovery channel while the
+# zone is active — any rally accumulating >=3%/12h is reported within one
+# 12h window even though smaller bounces are suppressed. Raising either
+# constant past the other would silently unbound in-zone recovery latency
+# (pinned by a boundary test in tests/test_bear_zone.py).
+BEAR_ZONE_OVERRIDE_X = 2.0
+
+# Zone arming requires the YTD low to be meaningful: same calendar year and
+# March onward (mirrors milestones.YTD_BADGE_MIN_MONTH). In January the
+# "year low" is just a few days of data — without this guard the zone would
+# arm in ANY regime every January (even an ATH bull run) and again whenever
+# a stale prior-year low survives a failed reseed.
+BEAR_ZONE_MIN_MONTH = 3
+
+
+def in_bear_zone(
+    state: dict, price_usd: float, *, now: datetime | None = None
+) -> bool:
+    """True when price is within BEAR_ZONE_PROX_PCT above the tracked YTD low.
+
+    Uses ``state["ytd_low"]`` (maintained by milestones.ytd_low_badge).
+    Degrades to False on missing/invalid/stale state — behavior is unchanged
+    until a CURRENT-year baseline has been seeded and the year has matured
+    past ``BEAR_ZONE_MIN_MONTH``.
+    """
+    now = now or datetime.now(timezone.utc)
+    try:
+        if state.get("ytd_low_year") != now.year or now.month < BEAR_ZONE_MIN_MONTH:
+            return False
+        low = float(state.get("ytd_low") or 0.0)
+        price = float(price_usd)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    if low <= 0 or price <= 0:
+        return False
+    return price <= low * (1 + BEAR_ZONE_PROX_PCT / 100)
+
 
 def is_counter_trend_bounce(
     direction: str,
@@ -119,6 +171,7 @@ def is_counter_trend_bounce(
     trend_24h_pct: float = 0.0,
     *,
     override_mult: float = 1.0,
+    bear_zone: bool = False,
 ) -> bool:
     """True if ``direction`` is a minor bounce against an established trend.
 
@@ -134,6 +187,14 @@ def is_counter_trend_bounce(
     fire floor to e.g. 0.36% would still have its reversals re-suppressed
     by the fixed 1.5% override — defeating the lowered floor right when a
     sharp reversal (the FOMC pattern) matters most.
+
+    ``bear_zone`` (see ``in_bear_zone``): price is near the YTD low, so the
+    regime is treated as DOWN regardless of the short 1h/24h trends (which
+    flip positive right after a bottom — the exact moment dead-cat bounces
+    spam 暴騰 alerts). Up-moves then need BEAR_ZONE_OVERRIDE_X × the normal
+    override, the momentum exception is disabled, and down-moves are never
+    suppressed. Composes with ``override_mult`` (event-mode still lowers
+    the scaled bar).
     """
     try:
         move = abs(float(move_pct))
@@ -143,18 +204,23 @@ def is_counter_trend_bounce(
         return False
     override = COUNTER_TREND_OVERRIDE_PCT * override_mult
     momentum_override = COUNTER_TREND_MOMENTUM_OVERRIDE_PCT * override_mult
-    if move >= override:
-        return False  # big enough to be a genuine reversal
     downtrend = t1h <= -COUNTER_TREND_1H_PCT or t24 <= -COUNTER_TREND_24H_PCT
     uptrend = t1h >= COUNTER_TREND_1H_PCT or t24 >= COUNTER_TREND_24H_PCT
+    momentum_ok = True
+    if bear_zone:
+        override *= BEAR_ZONE_OVERRIDE_X
+        downtrend, uptrend = True, False
+        momentum_ok = False  # bounces routinely flip the 1h — no early pass
+    if move >= override:
+        return False  # big enough to be a genuine reversal
     if direction == "up" and downtrend:
         # 1h already positive (reversal underway) + clears momentum override
         # → fire early; otherwise it's a dead-cat bounce → suppress.
-        if t1h > 0 and move >= momentum_override:
+        if momentum_ok and t1h > 0 and move >= momentum_override:
             return False
         return True
     if direction == "down" and uptrend:
-        if t1h < 0 and move >= momentum_override:
+        if momentum_ok and t1h < 0 and move >= momentum_override:
             return False
         return True
     return False

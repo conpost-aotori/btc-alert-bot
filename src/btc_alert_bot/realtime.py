@@ -47,6 +47,7 @@ from .detector import (  # noqa: E402
     GLOBAL_DEBOUNCE_MIN,
     SpikeDetector,
     append_feature_history,
+    in_bear_zone,
     is_counter_trend_bounce,
     is_global_duplicate,
     load_state,
@@ -392,18 +393,21 @@ class RealtimeBot:
             # established trend (e.g. a +0.7% 1m bounce mid-crash) would post
             # a "暴騰" title over a crash-context summary. Drop it here, before
             # the expensive factor / summary work.
+            bz = in_bear_zone(state, price_data.get("price_usd", 0.0))
             if is_counter_trend_bounce(
                 direction, intra_pct,
                 price_data.get("change_1h", 0.0),
                 price_data.get("change_24h", 0.0),
                 override_mult=event_mode.threshold_factor(_now_iso()),
+                bear_zone=bz,
             ):
                 log.info(
                     "Fast-track %s %+.3f%% suppressed: counter-trend bounce "
-                    "(1h %+.2f%%, 24h %+.2f%%)",
+                    "(1h %+.2f%%, 24h %+.2f%%%s)",
                     window, intra_pct,
                     price_data.get("change_1h", 0.0),
                     price_data.get("change_24h", 0.0),
+                    ", bear-zone" if bz else "",
                 )
                 return
 
@@ -551,6 +555,7 @@ class RealtimeBot:
             # Counter-trend bounce filter: drop a small move opposite to an
             # established trend (its summary would contradict the title).
             # Uses the detector's own 1h return plus the 24h regime.
+            bz = in_bear_zone(state, price_data.get("price_usd", 0.0))
             if spike is not None and is_counter_trend_bounce(
                 spike["direction"], spike["change"],
                 (features or {}).get("return_1h", price_data.get("change_1h", 0.0)),
@@ -558,13 +563,15 @@ class RealtimeBot:
                 override_mult=event_mode.threshold_factor(
                     price_data.get("timestamp")
                 ),
+                bear_zone=bz,
             ):
                 log.info(
                     "Composite %s %+.2f%% (%s) suppressed: counter-trend "
-                    "bounce (1h %+.2f%%, 24h %+.2f%%)",
+                    "bounce (1h %+.2f%%, 24h %+.2f%%%s)",
                     spike["window"], spike["change"], spike["direction"],
                     (features or {}).get("return_1h", price_data.get("change_1h", 0.0)),
                     price_data.get("change_24h", 0.0),
+                    ", bear-zone" if bz else "",
                 )
                 spike = None
 
