@@ -164,6 +164,66 @@ def in_bear_zone(
     return price <= low * (1 + BEAR_ZONE_PROX_PCT / 100)
 
 
+# ---------------------------------------------------------------------------
+# Rally zone — an established short-term uptrend (mirrors bear_zone)
+# ---------------------------------------------------------------------------
+# Backtest (2026-08-22): a -1.40%/1m and a -2.13%/1h alert fired mid-pullback
+# during a clear rally (24h change +2.54%) because at the moment of firing
+# the 1h had ALREADY flipped negative (-1.37%) — the legacy uptrend gate
+# (t1h>=1.0 OR t24>=3.0) requires one of two fast-moving signals to still
+# agree, so it missed a regime that was obviously still an uptrend one
+# candle earlier. Unlike bear_zone (a multi-week condition anchored to a
+# tracked, state-persisted YTD low), "established uptrend" has no natural
+# multi-week anchor to track in state — so this uses the live 24h ticker
+# change directly, at a LOWER bar (2.0%) than the general counter-trend
+# gate (3.0%), so a rally that's already cooling toward 3.0% is still
+# recognized as a rally while a mild pullback eats into the 24h number.
+# No state, no persistence, no year-rollover risk — purely a live snapshot.
+RALLY_ZONE_24H_PCT = 2.0
+# Second, corroborating condition (mirrors bear_zone's "near the low"
+# proximity): the current pullback must still be SHALLOW — price within
+# RALLY_ZONE_MAX_PULLBACK_PCT of the 24h high. A 24h change >= +2% is common
+# for BTC (roughly a fifth of days), so on its own it would keep the 3.0%
+# down-suppression band engaged far more often than bear_zone's rare,
+# YTD-anchored trigger. Requiring a shallow pullback confines the zone to
+# the "short dip inside an intact rally" the user asked to mute, and makes
+# it SELF-DISARMING: once a decline deepens past the bound it is no longer a
+# short-term dip but a reversal, the zone drops, and full sensitivity
+# returns — even while the 24h change is still positive.
+RALLY_ZONE_MAX_PULLBACK_PCT = 3.0
+# INVARIANT: COUNTER_TREND_OVERRIDE_PCT * RALLY_ZONE_OVERRIDE_X must stay
+# <= HARD_FALLBACK_RETURN_12H_PCT (currently 1.5 * 2.0 = 3.0 == 3.0) — same
+# guaranteed-recovery-channel invariant as bear_zone, mirrored for the
+# downside: any decline accumulating >=3%/12h is still reported within one
+# 12h window even while smaller pullbacks are suppressed during a rally.
+# The pullback bound (3.0% off the high) and this override (3.0% single
+# move) are deliberately equal: a single-window drop large enough to be a
+# genuine reversal is also large enough to disarm the zone.
+RALLY_ZONE_OVERRIDE_X = 2.0
+
+
+def in_rally_zone(price_data: dict) -> bool:
+    """True when the live 24h change shows an established uptrend AND the
+    current pullback is still shallow (price within
+    RALLY_ZONE_MAX_PULLBACK_PCT of the 24h high).
+
+    Uses ``price_data["change_24h"]`` / ``["high_24h"]`` / ``["price_usd"]``
+    (already fetched every candle, no extra call). Degrades to False —
+    i.e. NO suppression — on any missing/invalid input.
+    """
+    try:
+        t24 = float(price_data.get("change_24h", 0.0))
+        high = float(price_data.get("high_24h") or 0.0)
+        price = float(price_data.get("price_usd") or 0.0)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    if t24 < RALLY_ZONE_24H_PCT:
+        return False
+    if high <= 0 or price <= 0:
+        return False  # can't judge pullback depth → don't suppress
+    return price >= high * (1 - RALLY_ZONE_MAX_PULLBACK_PCT / 100)
+
+
 def is_counter_trend_bounce(
     direction: str,
     move_pct: float,
@@ -172,6 +232,7 @@ def is_counter_trend_bounce(
     *,
     override_mult: float = 1.0,
     bear_zone: bool = False,
+    rally_zone: bool = False,
 ) -> bool:
     """True if ``direction`` is a minor bounce against an established trend.
 
@@ -195,6 +256,15 @@ def is_counter_trend_bounce(
     override, the momentum exception is disabled, and down-moves are never
     suppressed. Composes with ``override_mult`` (event-mode still lowers
     the scaled bar).
+
+    ``rally_zone`` (see ``in_rally_zone``): the live 24h change shows an
+    established uptrend, so the regime is treated as UP regardless of a
+    momentary 1h dip. Down-moves then need RALLY_ZONE_OVERRIDE_X × the
+    normal override, the momentum exception is disabled, and up-moves are
+    never suppressed. If BOTH zones are somehow true at once (a fresh
+    bounce off a low that's already +2%/24h), ``bear_zone`` TAKES
+    PRECEDENCE — the "always alert on further decline near the lows"
+    guarantee must win over "suppress pullbacks during a rally".
     """
     try:
         move = abs(float(move_pct))
@@ -211,6 +281,10 @@ def is_counter_trend_bounce(
         override *= BEAR_ZONE_OVERRIDE_X
         downtrend, uptrend = True, False
         momentum_ok = False  # bounces routinely flip the 1h — no early pass
+    elif rally_zone:
+        override *= RALLY_ZONE_OVERRIDE_X
+        uptrend, downtrend = True, False
+        momentum_ok = False  # pullbacks routinely flip the 1h — no early pass
     if move >= override:
         return False  # big enough to be a genuine reversal
     if direction == "up" and downtrend:

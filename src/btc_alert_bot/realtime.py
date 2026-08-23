@@ -48,6 +48,7 @@ from .detector import (  # noqa: E402
     SpikeDetector,
     append_feature_history,
     in_bear_zone,
+    in_rally_zone,
     is_counter_trend_bounce,
     is_global_duplicate,
     load_state,
@@ -456,12 +457,14 @@ class RealtimeBot:
             # a "暴騰" title over a crash-context summary. Drop it here, before
             # the expensive factor / summary work.
             bz = in_bear_zone(state, price_data.get("price_usd", 0.0))
+            rz = in_rally_zone(price_data)
             if is_counter_trend_bounce(
                 direction, intra_pct,
                 price_data.get("change_1h", 0.0),
                 price_data.get("change_24h", 0.0),
                 override_mult=event_mode.threshold_factor(_now_iso()),
                 bear_zone=bz,
+                rally_zone=rz,
             ):
                 log.info(
                     "Fast-track %s %+.3f%% suppressed: counter-trend bounce "
@@ -469,7 +472,7 @@ class RealtimeBot:
                     window, intra_pct,
                     price_data.get("change_1h", 0.0),
                     price_data.get("change_24h", 0.0),
-                    ", bear-zone" if bz else "",
+                    ", bear-zone" if bz else (", rally-zone" if rz else ""),
                 )
                 return
 
@@ -618,6 +621,7 @@ class RealtimeBot:
             # established trend (its summary would contradict the title).
             # Uses the detector's own 1h return plus the 24h regime.
             bz = in_bear_zone(state, price_data.get("price_usd", 0.0))
+            rz = in_rally_zone(price_data)
             if spike is not None and is_counter_trend_bounce(
                 spike["direction"], spike["change"],
                 (features or {}).get("return_1h", price_data.get("change_1h", 0.0)),
@@ -626,6 +630,7 @@ class RealtimeBot:
                     price_data.get("timestamp")
                 ),
                 bear_zone=bz,
+                rally_zone=rz,
             ):
                 log.info(
                     "Composite %s %+.2f%% (%s) suppressed: counter-trend "
@@ -633,7 +638,7 @@ class RealtimeBot:
                     spike["window"], spike["change"], spike["direction"],
                     (features or {}).get("return_1h", price_data.get("change_1h", 0.0)),
                     price_data.get("change_24h", 0.0),
-                    ", bear-zone" if bz else "",
+                    ", bear-zone" if bz else (", rally-zone" if rz else ""),
                 )
                 spike = None
 

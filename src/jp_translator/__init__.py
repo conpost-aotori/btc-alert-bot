@@ -13,6 +13,8 @@
 
 全段失敗した場合は `None` を返し、`logging.ERROR` を 1 行出す。
 各 BOT 側で deterministic な fallback に流すこと。
+
+順序は core.py で一元管理 (2026-08-23: Gemini を主に変更)。
 """
 from __future__ import annotations
 
