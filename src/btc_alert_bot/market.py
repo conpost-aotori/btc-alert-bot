@@ -80,6 +80,37 @@ def fetch_klines(bar: str = "5m", limit: int = 200) -> list[dict]:
     return out
 
 
+def fetch_close_at(ts: datetime, bar: str = "1m") -> float | None:
+    """Close price of the BTC-USDT-SWAP bar that contains ``ts`` (UTC).
+
+    Used by the outcome reviewer to price an alert at exactly +12h/+24h
+    even when the check runs late (container restart, backlog). OKX's
+    ``after`` param returns bars whose open is strictly EARLIER than the
+    given ms ts, so ``after=ts`` yields the bar containing ``ts`` (open <
+    ts <= open + width) — its close is the price within one bar-width
+    after ``ts`` (1 minute at bar=1m). Callers that need a CLOSED bar
+    must wait one bar-width past ``ts`` before asking. Tries the recent-candles endpoint first, then the long-
+    retention ``history-candles`` endpoint. Returns None on any failure
+    so callers can fall back (e.g. to the live ticker) or retry later.
+    """
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    after_ms = str(int(ts.timestamp() * 1000))
+    params = {"instId": INST_ID, "bar": bar, "after": after_ms, "limit": "1"}
+    for path in ("/api/v5/market/candles", "/api/v5/market/history-candles"):
+        try:
+            rows = _get(path, params)
+        except Exception as e:
+            log.warning("fetch_close_at(%s) %s failed: %s", ts.isoformat(), path, e)
+            continue
+        if rows:
+            try:
+                return float(rows[0][4])
+            except (TypeError, ValueError, IndexError):
+                continue
+    return None
+
+
 def fetch_year_low() -> float | None:
     """Lowest daily LOW since Jan 1 of the current (UTC) year, or None.
 

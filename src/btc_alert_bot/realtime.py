@@ -40,7 +40,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from . import event_mode  # noqa: E402
+from . import event_mode, outcome_review  # noqa: E402
 from .analyzers import gather_factors  # noqa: E402
 from .chart import render_chart  # noqa: E402
 from .detector import (  # noqa: E402
@@ -151,6 +151,7 @@ class RealtimeBot:
     async def run(self) -> None:
         log.info("%s", event_mode.describe())
         watchdog_task = asyncio.create_task(self._watchdog())
+        review_task = asyncio.create_task(self._outcome_reviewer())
         try:
             delay = RECONNECT_INITIAL_DELAY
             while not self.shutdown.is_set():
@@ -191,6 +192,7 @@ class RealtimeBot:
                     delay = min(delay * 2, RECONNECT_MAX_DELAY)
         finally:
             watchdog_task.cancel()
+            review_task.cancel()
             # Allow the in-flight detection (if any) to finish before exit.
             if self._detection_task and not self._detection_task.done():
                 try:
@@ -220,6 +222,36 @@ class RealtimeBot:
                 )
                 # exit code 2 makes intent obvious in container logs.
                 os._exit(2)
+
+    async def _outcome_reviewer(self) -> None:
+        """Grade delivered alerts at +12h/+24h (判定検証) and post the
+        review note to Discord only. Runs the sync pipeline in a thread so
+        it never blocks the WS loop; every tick is fully exception-guarded
+        so a bad OKX/Discord day can't kill the reviewer (or the bot).
+        """
+        if not outcome_review.enabled():
+            log.info("outcome-review: disabled (ENABLE_OUTCOME_REVIEW=false)")
+            return
+        log.info(
+            "outcome-review: enabled (horizons=%s, poll=%.0fs)",
+            outcome_review.HORIZONS_H, outcome_review.REVIEW_POLL_S,
+        )
+        while not self.shutdown.is_set():
+            try:
+                await asyncio.sleep(outcome_review.REVIEW_POLL_S)
+            except asyncio.CancelledError:
+                return
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(outcome_review.run_once, HISTORY_DB_PATH),
+                    timeout=DETECTION_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                log.warning("outcome-review: tick exceeded %.0fs; skipping", DETECTION_TIMEOUT_S)
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                log.exception("outcome-review: tick crashed (will retry next poll)")
 
     # ------------------------------------------------------------------
     # Per-connection message loop

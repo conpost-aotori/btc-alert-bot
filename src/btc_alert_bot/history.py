@@ -13,10 +13,18 @@ Design notes:
       python -m btc_alert_bot.history list
       python -m btc_alert_bot.history show <id>
 
-Future work (Phase 2.5):
-- Similarity search (cosine on the features_json vector)
-- Outcome backfill (did the spike continue / reverse 30min later?)
+Phase 2.5 (done): similarity search (cosine on the features_json vector).
+Phase 2.6 (2026-08-23): **outcome labels** — ``alert_outcomes`` records, for
+every delivered alert, the OKX price at +12h / +24h and whether the alert's
+direction call continued / reversed / went flat. Joined with
+``alerts.features_json`` this is the self-learning dataset for threshold
+and zone tuning. See outcome_review.py (scheduler) and the ``outcomes`` /
+``export`` CLI subcommands below.
+
+Future work:
 - Threshold tuning by replaying past spikes against new score weights
+- Counterfactual logging of SUPPRESSED candidates (bear/rally/cooldown) so
+  the zones can be graded too, not just the alerts that fired
 """
 from __future__ import annotations
 
@@ -28,7 +36,13 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+# Outcome horizons graded for every delivered alert (hours). Lives here
+# (not in outcome_review.py) so the CSV export always emits a fixed column
+# set — a learning dataset must have a stable schema regardless of how
+# many horizons have been graded so far.
+DEFAULT_HORIZONS_H: tuple[int, ...] = (12, 24)
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -66,6 +80,30 @@ CREATE TABLE IF NOT EXISTS factors (
 );
 
 CREATE INDEX IF NOT EXISTS idx_factors_alert ON factors(alert_id);
+
+-- Phase 2.6: outcome labels. One row per (alert, horizon). price_at_alert
+-- is re-priced on OKX at the alert ts so both ends use the same instrument
+-- (alerts.price_usd is the CoinGecko fire price, kept for reference).
+-- label: continued (move kept going = direction call correct),
+--        reversed  (went the other way), flat (within the neutral band).
+-- posted: 1 if the Discord review note went out; 0 for silent backfill.
+CREATE TABLE IF NOT EXISTS alert_outcomes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_id INTEGER NOT NULL,
+    horizon_h INTEGER NOT NULL,
+    due_ts TEXT NOT NULL,
+    eval_ts TEXT NOT NULL,
+    price_at_alert REAL,
+    price_at_eval REAL NOT NULL,
+    change_pct REAL NOT NULL,
+    label TEXT NOT NULL,
+    posted INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE,
+    UNIQUE (alert_id, horizon_h)
+);
+
+CREATE INDEX IF NOT EXISTS idx_outcomes_alert ON alert_outcomes(alert_id);
+CREATE INDEX IF NOT EXISTS idx_outcomes_due ON alert_outcomes(due_ts);
 """
 
 
@@ -84,11 +122,17 @@ def init_db(path: Path) -> None:
     """Create the schema if missing and stamp ``schema_version``."""
     with _connect(path) as conn:
         conn.executescript(SCHEMA_SQL)
-        conn.execute(
-            "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)",
-            ("schema_version", str(SCHEMA_VERSION)),
-        )
-        conn.commit()
+        cur = conn.execute(
+            "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        if not cur or cur[0] != str(SCHEMA_VERSION):
+            # Only write when it actually changes — this runs on every
+            # record_alert / reviewer tick and each write takes the lock.
+            conn.execute(
+                "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)",
+                ("schema_version", str(SCHEMA_VERSION)),
+            )
+            conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +224,237 @@ def list_recent_alerts(path: Path, limit: int = 20) -> list[dict]:
     except Exception as e:
         log.warning("Failed to list alerts: %s", e)
         return []
+
+
+# ---------------------------------------------------------------------------
+# Outcome labels (Phase 2.6)
+# ---------------------------------------------------------------------------
+
+def pending_outcome_checks(
+    path: Path,
+    *,
+    now: datetime,
+    horizons_h: tuple[int, ...],
+    limit: int | None = None,
+) -> list[dict]:
+    """Delivered alerts whose +horizon is due but not yet evaluated.
+
+    Returns ALL due (alert, horizon) pairs by default, OLDEST DUE FIRST
+    (``limit`` truncates if given). The reviewer deliberately fetches the
+    whole due set and prioritises in-grace pairs itself — truncating here
+    (oldest-first) would hide a fresh, timely pair behind a large backlog.
+    Only alerts that actually reached a channel count — an undelivered
+    row never made a user-facing "call" to grade.
+    A pair becomes due one minute AFTER ``ts + horizon`` so the 1m bar
+    that contains the due instant has closed (otherwise the eval price
+    would be read off a still-open candle).
+    """
+    if not path.exists():
+        return []
+    from datetime import timedelta
+    try:
+        init_db(path)
+        with _connect(path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT id, ts, price_usd, spike_window, spike_change_pct,
+                       spike_direction, spike_score
+                FROM alerts
+                WHERE (delivered_discord = 1 OR delivered_x = 1)
+                ORDER BY ts ASC
+                """
+            ).fetchall()
+            done = {
+                (r["alert_id"], r["horizon_h"])
+                for r in conn.execute(
+                    "SELECT alert_id, horizon_h FROM alert_outcomes"
+                ).fetchall()
+            }
+    except Exception as e:
+        log.warning("pending_outcome_checks failed: %s", e)
+        return []
+    out: list[dict] = []
+    for r in rows:
+        try:
+            ts = datetime.fromisoformat(r["ts"])
+        except Exception:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        for h in horizons_h:
+            if (r["id"], h) in done:
+                continue
+            due = ts + timedelta(hours=h)
+            if due + timedelta(minutes=1) <= now:
+                out.append({
+                    "alert_id": r["id"],
+                    "ts": ts,
+                    "price_usd": r["price_usd"],
+                    "window": r["spike_window"],
+                    "change_pct": r["spike_change_pct"],
+                    "direction": r["spike_direction"],
+                    "score": r["spike_score"],
+                    "horizon_h": h,
+                    "due": due,
+                })
+    out.sort(key=lambda d: d["due"])
+    return out[:limit] if limit else out
+
+
+def record_outcome(
+    path: Path,
+    *,
+    alert_id: int,
+    horizon_h: int,
+    due_ts: datetime,
+    eval_ts: datetime,
+    price_at_alert: float | None,
+    price_at_eval: float,
+    change_pct: float,
+    label: str,
+    posted: bool,
+) -> bool:
+    """Insert one outcome row. Idempotent via UNIQUE(alert_id, horizon_h).
+
+    Returns True ONLY when a new row was actually inserted — the caller
+    uses this as the gate for posting the Discord note, so a duplicate
+    (already-recorded) pair can never produce a second note.
+    """
+    try:
+        with _connect(path) as conn:
+            cur = conn.execute(
+                """
+                INSERT OR IGNORE INTO alert_outcomes (
+                    alert_id, horizon_h, due_ts, eval_ts, price_at_alert,
+                    price_at_eval, change_pct, label, posted
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    alert_id, horizon_h, due_ts.isoformat(), eval_ts.isoformat(),
+                    price_at_alert, price_at_eval, change_pct, label,
+                    1 if posted else 0,
+                ),
+            )
+            conn.commit()
+            return cur.rowcount == 1
+    except Exception as e:
+        log.warning("record_outcome failed (alert %s, +%dh): %s", alert_id, horizon_h, e)
+        return False
+
+
+def mark_outcome_posted(path: Path, *, alert_id: int, horizon_h: int) -> None:
+    """Flip ``posted`` to 1 after the Discord note went out."""
+    try:
+        with _connect(path) as conn:
+            conn.execute(
+                "UPDATE alert_outcomes SET posted = 1 WHERE alert_id = ? AND horizon_h = ?",
+                (alert_id, horizon_h),
+            )
+            conn.commit()
+    except Exception as e:
+        log.warning("mark_outcome_posted failed (alert %s, +%dh): %s", alert_id, horizon_h, e)
+
+
+def outcome_stats(
+    path: Path, *, days: int = 30, now: datetime | None = None
+) -> dict:
+    """Accuracy summary over the last ``days``.
+
+    Returns ``{horizon_h: {"n", "continued", "reversed", "flat",
+    "by_window": {window: {"n", "continued"}}}}``. "continued" means the
+    direction call was right. Empty dict on error / no data.
+    """
+    if not path.exists():
+        return {}
+    from datetime import timedelta
+    now = now or datetime.now(timezone.utc)
+    since = (now - timedelta(days=days)).isoformat()
+    stats: dict = {}
+    try:
+        with _connect(path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT o.horizon_h, o.label, a.spike_window AS window
+                FROM alert_outcomes o JOIN alerts a ON a.id = o.alert_id
+                WHERE a.ts >= ?
+                """,
+                (since,),
+            ).fetchall()
+    except Exception as e:
+        log.warning("outcome_stats failed: %s", e)
+        return {}
+    for r in rows:
+        h = stats.setdefault(
+            int(r["horizon_h"]),
+            {"n": 0, "continued": 0, "reversed": 0, "flat": 0, "by_window": {}},
+        )
+        h["n"] += 1
+        if r["label"] in ("continued", "reversed", "flat"):
+            h[r["label"]] += 1
+        w = h["by_window"].setdefault(r["window"], {"n": 0, "continued": 0})
+        w["n"] += 1
+        if r["label"] == "continued":
+            w["continued"] += 1
+    return stats
+
+
+def export_outcomes_csv(path: Path, out_path: Path) -> int:
+    """Write the self-learning dataset: one row per delivered alert with
+    features flattened and +12h/+24h outcome columns. Returns row count."""
+    import csv
+    if not path.exists():
+        return 0
+    init_db(path)
+    with _connect(path) as conn:
+        conn.row_factory = sqlite3.Row
+        alerts = conn.execute(
+            "SELECT * FROM alerts WHERE delivered_discord = 1 OR delivered_x = 1 "
+            "ORDER BY ts ASC"
+        ).fetchall()
+        outs = conn.execute("SELECT * FROM alert_outcomes").fetchall()
+    by_alert: dict[int, dict[int, sqlite3.Row]] = {}
+    for o in outs:
+        by_alert.setdefault(int(o["alert_id"]), {})[int(o["horizon_h"])] = o
+    feature_keys: list[str] = []
+    parsed: list[tuple[sqlite3.Row, dict]] = []
+    for a in alerts:
+        try:
+            f = json.loads(a["features_json"] or "{}") or {}
+        except Exception:
+            f = {}
+        for k in f:
+            if k not in feature_keys and k != "ts":
+                feature_keys.append(k)
+        parsed.append((a, f))
+    horizons = sorted(set(DEFAULT_HORIZONS_H) | {int(o["horizon_h"]) for o in outs})
+    cols = [
+        "alert_id", "ts", "window", "direction", "change_pct", "score",
+        "price_usd",
+    ] + [f"f_{k}" for k in feature_keys]
+    for h in horizons:
+        cols += [f"h{h}_price", f"h{h}_change_pct", f"h{h}_label"]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with open(out_path, "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(cols)
+        for a, f in parsed:
+            row = [
+                a["id"], a["ts"], a["spike_window"], a["spike_direction"],
+                a["spike_change_pct"], a["spike_score"], a["price_usd"],
+            ] + [f.get(k, "") for k in feature_keys]
+            oc = by_alert.get(int(a["id"]), {})
+            for h in horizons:
+                o = oc.get(h)
+                row += (
+                    [o["price_at_eval"], o["change_pct"], o["label"]]
+                    if o else ["", "", ""]
+                )
+            w.writerow(row)
+            n += 1
+    return n
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +613,7 @@ def get_alert(path: Path, alert_id: int) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
-# CLI: python -m btc_alert_bot.history {list|show <id>|init}
+# CLI: python -m btc_alert_bot.history {list|show <id>|outcomes|export|init}
 # ---------------------------------------------------------------------------
 
 def _cli() -> int:
@@ -370,6 +645,12 @@ def _cli() -> int:
     p_show = sub.add_parser("show", help="Show one alert with its factors")
     p_show.add_argument("id", type=int)
 
+    p_out = sub.add_parser("outcomes", help="Direction-call accuracy (self-learning labels)")
+    p_out.add_argument("--days", type=int, default=30)
+
+    p_exp = sub.add_parser("export", help="Write the labeled dataset as CSV")
+    p_exp.add_argument("--out", default="data/outcomes_export.csv")
+
     args = parser.parse_args()
     db_path = Path(args.db)
 
@@ -395,6 +676,29 @@ def _cli() -> int:
             if r.get("summary"):
                 first_line = r["summary"].split("\n", 1)[0][:120]
                 print(f"        {first_line}")
+        return 0
+
+    if args.cmd == "outcomes":
+        stats = outcome_stats(db_path, days=args.days)
+        if not stats:
+            print("(no outcome labels yet)")
+            return 0
+        print(f"Direction-call accuracy, last {args.days} days:")
+        for h in sorted(stats):
+            st = stats[h]
+            n = st["n"] or 1
+            print(
+                f"  +{h:>2}h  n={st['n']:<3} 正解(継続) {st['continued']/n*100:5.1f}%  "
+                f"反転 {st['reversed']/n*100:5.1f}%  横ばい {st['flat']/n*100:5.1f}%"
+            )
+            for w, ws in sorted(st["by_window"].items()):
+                wn = ws["n"] or 1
+                print(f"        {w:<4} n={ws['n']:<3} 正解 {ws['continued']/wn*100:5.1f}%")
+        return 0
+
+    if args.cmd == "export":
+        n = export_outcomes_csv(db_path, Path(args.out))
+        print(f"Wrote {n} rows to {args.out}")
         return 0
 
     if args.cmd == "show":

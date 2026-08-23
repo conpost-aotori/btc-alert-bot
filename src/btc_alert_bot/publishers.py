@@ -303,6 +303,36 @@ def post_discord(
         return False
 
 
+def post_discord_note(
+    title: str,
+    description: str,
+    *,
+    color: int = 0x607D8B,
+    webhook_env: str = "DISCORD_WEBHOOK_URL",
+) -> bool:
+    """Post a small text-only embed to Discord. Returns success.
+
+    Used for the outcome-review notes (判定検証). DISCORD ONLY by design —
+    there is deliberately no X counterpart: the review is internal
+    bookkeeping for the operator, not a public signal. ``webhook_env``
+    lets a dedicated channel be used (e.g. DISCORD_REVIEW_WEBHOOK_URL)
+    with the main webhook as the default.
+    """
+    webhook = os.getenv(webhook_env) or os.getenv("DISCORD_WEBHOOK_URL")
+    if not webhook:
+        log.warning("Discord webhook missing — skipping note")
+        return False
+    payload = {"embeds": [{"title": title, "description": description, "color": color}]}
+    try:
+        resp = requests.post(webhook, json=payload, timeout=15)
+        resp.raise_for_status()
+        log.info("Discord note OK (status=%d)", resp.status_code)
+        return True
+    except Exception as e:
+        log.error("Discord note failed: %s", e)
+        return False
+
+
 def x_configured() -> bool:
     """True when all four X API keys are present, i.e. post_x can actually
     post (it silently no-ops to False when any key is missing). Used by the
