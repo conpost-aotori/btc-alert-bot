@@ -55,9 +55,16 @@ FIRE_SCORE_MIN = 2.4
 FIRE_ATR_Z_MIN = 1.2
 FIRE_VOL_Z_MIN = 1.5
 
-# Per-window return floors — second round of sensitivity bumps. Hierarchy
-# (1m << 3m / 5m < 15m) still preserved.
-FIRE_RETURN_5M_MIN_PCT = 0.5
+# Per-window return floors. Hierarchy (1m << 3m / 5m < 15m) still preserved.
+# 5m raised 0.5 → 0.6 (2026-10-15) — FIRST tuning driven by the outcome
+# labels: across 60 days of graded alerts the 5m composite class was a
+# directional coin flip at +12h/+24h (13 continued / 14 reversed) at EVERY
+# magnitude and score slice, i.e. no cut can select "bad" fires — so this
+# is volume control, not a quality filter. 0.6 removes ~44% of 5m fires
+# (the thinnest pings, ~$0.5k moves at $80k) → ~1.25 alerts/day overall.
+# The 1.0% hard floor still catches obvious moves; 2h/12h windows (the
+# ones that actually grade well: 9/4 and 7/2) are untouched.
+FIRE_RETURN_5M_MIN_PCT = 0.6
 FIRE_RETURN_15M_MIN_PCT = 1.5
 
 # Adaptive reference. ``features["atr_pct"]`` is already per-5-min-bar ATR
