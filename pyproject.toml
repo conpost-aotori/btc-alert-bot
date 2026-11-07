@@ -16,6 +16,9 @@ dependencies = [
     "python-dotenv>=1.0",
     "matplotlib>=3.8",
     "mplfinance>=0.12.10b0",
+    # mplfinance imports six (`from six.moves import zip`) without declaring it;
+    # python-dateutil 4.0 no longer pulls six in, so declare it explicitly.
+    "six>=1.16",
     "pandas>=2.0",
     "websockets>=12",  # used by realtime.py (Phase 3)
 ]
